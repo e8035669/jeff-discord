@@ -38,7 +38,7 @@ def run_bot(config):
 
     options = {}
     if 'https_proxy' in os.environ:
-        logging.info('Use proxy', os.environ['https_proxy'])
+        logging.info('Use proxy {}'.format(os.environ['https_proxy']))
         options['proxy'] = os.environ['https_proxy']
 
     bot = commands.Bot('$', **options)
