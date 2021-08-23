@@ -1,4 +1,5 @@
 import os
+import sys
 import logging
 import discord
 from discord.ext import commands
@@ -35,7 +36,12 @@ async def unload_ext(ctx, name):
 def run_bot(config):
     logging.basicConfig(level=logging.INFO)
 
-    bot = commands.Bot('$')
+    options = {}
+    if 'https_proxy' in os.environ:
+        logging.info('Use proxy', os.environ['https_proxy'])
+        options['proxy'] = os.environ['https_proxy']
+
+    bot = commands.Bot('$', **options)
     bot.add_command(ping)
     bot.add_command(load_ext)
     bot.add_command(reload_ext)

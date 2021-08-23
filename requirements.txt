@@ -1,1 +1,2 @@
 discord.py[voice] @ git+https://github.com/Rapptz/discord.py.git@master#egg=discord.py
+psycopg2-binary
