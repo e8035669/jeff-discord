@@ -7,6 +7,9 @@ from os import path
 import pickle
 from datetime import date, datetime, timedelta, time
 import asyncio
+import asyncpg
+
+from .utils.db import DB
 
 log = logging.getLogger('color')
 
@@ -22,6 +25,99 @@ def get_random_color(id: int):
 
 def get_hashed_color(role: int, offset: int, days: int):
     return get_random_color(hash((role, offset, days)))
+
+class ColorRandomDataPG:
+    def __init__(self):
+        # task = asyncio.create_task(self.init_db())
+        asyncio.get_event_loop().run_until_complete(self.init_db())
+        self.conn: asyncpg.Connection = DB._conn
+
+
+    async def init_db(self):
+        conn: asyncpg.Connection = DB._conn
+        await conn.execute('''CREATE TABLE IF NOT EXISTS color_random_data(
+                                guild bigint,
+                                role bigint,
+                                shift int
+                           )''')
+        log.info('Create table color_random_data')
+
+
+    async def check_exists(self, guild: int, role: int):
+        count = await self.conn.fetchval(r'''SELECT COUNT(*)
+                                             FROM color_random_data
+                                             WHERE guild=$1 AND role=$2
+        ''', guild, role)
+        log.info("Check exist %d", count)
+        return count > 0
+
+
+    async def reg_role(self, guild: int, role: int):
+        log.info('reg_role %d, %d', guild, role)
+        ret = False
+        if not await self.check_exists(guild, role):
+            await self.conn.execute('''
+                INSERT INTO color_random_data
+                VALUES ($1, $2, 0)
+            ''', guild, role)
+            ret = True
+        return ret
+
+    async def unreg_role(self, guild: int, role: int):
+        log.info('unreg_role %d, %d', guild, role)
+        ret = False
+        if await self.check_exists(guild, role):
+            await self.conn.execute('''
+                DELETE FROM color_random_data
+                WHERE guild=$1 AND role=$2
+            ''', guild, role)
+            ret = True
+        return ret
+
+    async def next_color(self, guild: int, role: int):
+        log.info('next_color %d, %d', guild, role)
+        ret = False
+        if await self.check_exists(guild, role):
+            await self.conn.execute('''
+                UPDATE color_random_data
+                SET shift = shift + 1
+                WHERE guild=$1 AND role=$2
+            ''', guild, role)
+            ret = True
+        return ret
+
+    def today(self):
+        return date.today().toordinal()
+
+    def get_color(self, role: int, offset: int):
+        return get_hashed_color(role, offset, self.today())
+
+    async def get_all_colors(self):
+        today = self.today()
+        records = await self.conn.fetch('''
+            SELECT guild, role, shift
+            FROM color_random_data
+        ''')
+        ret = [(g, r, get_hashed_color(r, s, today)) for g, r, s in records]
+        log.info('get_color Get {} roles'.format(len(ret)))
+
+        return ret
+
+    def get_waiting_time(self):
+        tomorrow = datetime.combine(date.today(), time()) + timedelta(days=1)
+        now = datetime.now()
+        return tomorrow - now + timedelta(seconds=30)
+
+    async def get_reg_list(self):
+        records = await self.conn.fetch('''
+                                        SELECT guild, role, shift
+                                        FROM color_random_data
+        ''')
+
+        ret = [(g, r, s) for g, r, s in records]
+        log.info('get_list Get {} roles'.format(len(ret)))
+        return ret
+
 
 
 class ColorRandomData:
@@ -100,7 +196,7 @@ class ColorRandomData:
 class ColorRandomChange(commands.Cog):
     def __init__(self, bot: Bot):
         self.bot = bot
-        self.color = ColorRandomData()
+        self.color = ColorRandomDataPG()
         self.update_routing.start()
 
     def cog_unload(self):
@@ -110,7 +206,7 @@ class ColorRandomChange(commands.Cog):
     async def colorreg(self, ctx: Context, *, role: Role):
         async with ctx.typing():
             log.info('Reg this role: {}'.format(role))
-            self.color.reg_role(ctx.guild.id, role.id)
+            await self.color.reg_role(ctx.guild.id, role.id)
             await self.update_all_colors()
             await ctx.reply("OK", delete_after=30)
             await ctx.message.delete(delay=30)
@@ -120,7 +216,7 @@ class ColorRandomChange(commands.Cog):
     async def colorunreg(self, ctx: Context, *, role: Role):
         async with ctx.typing():
             log.info('Unreg this role: {}'.format(role))
-            ret = self.color.unreg_role(ctx.guild.id, role.id)
+            ret = await self.color.unreg_role(ctx.guild.id, role.id)
             if ret:
                 message = 'OK'
             else:
@@ -133,7 +229,7 @@ class ColorRandomChange(commands.Cog):
     async def nextcolor(self, ctx: Context, *, role: Role):
         async with ctx.typing():
             log.info("Next color on role: {}".format(role))
-            ret = self.color.next_color(ctx.guild.id, role.id)
+            ret = await self.color.next_color(ctx.guild.id, role.id)
             if ret:
                 message = 'OK'
             else:
@@ -156,7 +252,7 @@ class ColorRandomChange(commands.Cog):
     @commands.is_owner()
     async def listregs(self, ctx: Context):
         message = ''
-        for i, (gid, rid, offset) in enumerate(self.color.get_reg_list()):
+        for i, (gid, rid, offset) in enumerate(await self.color.get_reg_list()):
             guild = None
             role = None
             guild = self.bot.get_guild(gid)
@@ -169,7 +265,7 @@ class ColorRandomChange(commands.Cog):
 
     async def update_all_colors(self):
         log.info('Update all colors')
-        for gid, rid, color in self.color.get_all_colors():
+        for gid, rid, color in await self.color.get_all_colors():
             guild = self.bot.get_guild(gid)
             if guild == None:
                 continue

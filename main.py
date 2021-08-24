@@ -3,6 +3,8 @@ import sys
 import logging
 import discord
 from discord.ext import commands
+import asyncio
+from cogs.utils.db import DB
 
 extensions = [
     'cogs.color_commands',
@@ -41,7 +43,10 @@ def run_bot(config):
         logging.info('Use proxy {}'.format(os.environ['https_proxy']))
         options['proxy'] = os.environ['https_proxy']
 
-    bot = commands.Bot('$', **options)
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(DB.connect(config['database_url']))
+
+    bot = commands.Bot('$', loop=loop, **options)
     bot.add_command(ping)
     bot.add_command(load_ext)
     bot.add_command(reload_ext)
@@ -54,6 +59,7 @@ def run_bot(config):
 def main():
     config = {
         'token': os.environ['DC_TOKEN'],
+        'database_url': os.environ['DATABASE_URL']
     }
     run_bot(config)
 
