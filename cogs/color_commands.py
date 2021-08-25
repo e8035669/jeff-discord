@@ -5,7 +5,7 @@ from discord.ext.commands import Bot, Context
 import logging
 from os import path
 import pickle
-from datetime import date, datetime, timedelta, time
+from datetime import date, datetime, timedelta, time, timezone
 import asyncio
 import asyncpg
 
@@ -31,6 +31,7 @@ class ColorRandomDataPG:
         # task = asyncio.create_task(self.init_db())
         asyncio.get_event_loop().run_until_complete(self.init_db())
         self.conn: asyncpg.Connection = DB._conn
+        self.tzinfo = timezone(timedelta(hours=8))
 
 
     async def init_db(self):
@@ -87,24 +88,27 @@ class ColorRandomDataPG:
         return ret
 
     def today(self):
-        return date.today().toordinal()
+        return datetime.now(tz=self.tzinfo).date()
+
+    def today_ord(self):
+        return self.today().toordinal()
 
     def get_color(self, role: int, offset: int):
-        return get_hashed_color(role, offset, self.today())
+        return get_hashed_color(role, offset, self.today_ord())
 
     async def get_all_colors(self):
-        today = self.today()
+        today_ord= self.today_ord()
         records = await self.conn.fetch('''
             SELECT guild, role, shift
             FROM color_random_data
         ''')
-        ret = [(g, r, get_hashed_color(r, s, today)) for g, r, s in records]
+        ret = [(g, r, get_hashed_color(r, s, today_ord)) for g, r, s in records]
         log.info('get_color Get {} roles'.format(len(ret)))
 
         return ret
 
     def get_waiting_time(self):
-        tomorrow = datetime.combine(date.today(), time()) + timedelta(days=1)
+        tomorrow = datetime.combine(self.today(), time()) + timedelta(days=1)
         now = datetime.now()
         return tomorrow - now + timedelta(seconds=30)
 
@@ -117,81 +121,6 @@ class ColorRandomDataPG:
         ret = [(g, r, s) for g, r, s in records]
         log.info('get_list Get {} roles'.format(len(ret)))
         return ret
-
-
-
-class ColorRandomData:
-    def __init__(self):
-        self.color_data = {}
-        if path.exists('color_data.pickle'):
-            log.info('Loading roles')
-            with open('color_data.pickle', 'rb') as f:
-                self.color_data = pickle.load(f)
-            log.info('Loaded {} roles'.format(len(self.color_data)))
-
-    def save_color_data(self):
-        log.info('Saving {} roles'.format(len(self.color_data)))
-        with open('color_data.pickle', 'wb') as f:
-            pickle.dump(self.color_data, f)
-
-    def reg_role(self, guild: int, role: int):
-        if guild not in self.color_data:
-            self.color_data[guild] = {}
-        if role not in self.color_data[guild]:
-            self.color_data[guild][role] = {
-                'offset': 0
-            }
-        self.save_color_data()
-
-    def unreg_role(self, guild: int, role: int):
-        ret = False
-        if guild in self.color_data:
-            if role in self.color_data[guild]:
-                del self.color_data[guild][role]
-                ret = True
-                if len(self.color_data[guild]) == 0:
-                    del self.color_data[guild]
-        self.save_color_data()
-        return ret
-
-    def next_color(self, guild: int, role: int):
-        ret = False
-        if guild in self.color_data:
-            if role in self.color_data[guild]:
-                self.color_data[guild][role]['offset'] += 1
-                ret = True
-        self.save_color_data()
-        return ret
-
-    def today(self):
-        return date.today().toordinal()
-
-    def get_color(self, role: int, offset: int):
-        return get_hashed_color(role, offset, self.today())
-
-    def get_all_colors(self):
-        today = self.today()
-        ret = []
-        for g, d1 in self.color_data.items():
-            for r, d2 in d1.items():
-                offset = d2['offset']
-                ret.append((g, r, get_hashed_color(r, offset, today)))
-        return ret
-
-    def get_waiting_time(self):
-        tomorrow = datetime.combine(date.today(), time()) + timedelta(days=1)
-        now = datetime.now()
-        return tomorrow - now + timedelta(seconds=30)
-
-    def get_reg_list(self):
-        today = self.today()
-        ret = []
-        for g, d1 in self.color_data.items():
-            for r, d2 in d1.items():
-                offset = d2['offset']
-                ret.append((g, r, offset))
-        return ret
-
 
 class ColorRandomChange(commands.Cog):
     def __init__(self, bot: Bot):
