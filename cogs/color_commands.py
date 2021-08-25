@@ -108,14 +108,14 @@ class ColorRandomDataPG:
         return ret
 
     def get_waiting_time(self):
-        tomorrow = datetime.combine(self.today(), time()) + timedelta(days=1)
-        now = datetime.now()
+        tomorrow = datetime.combine(self.today(), time(), tzinfo=self.tzinfo) + timedelta(days=1)
+        now = datetime.now(tz=self.tzinfo)
         return tomorrow - now + timedelta(seconds=30)
 
     async def get_reg_list(self):
         records = await self.conn.fetch('''
-                                        SELECT guild, role, shift
-                                        FROM color_random_data
+            SELECT guild, role, shift
+            FROM color_random_data
         ''')
 
         ret = [(g, r, s) for g, r, s in records]
