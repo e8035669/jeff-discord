@@ -33,7 +33,7 @@ class ColorRandomDataPG:
 
 
     async def init_db(self):
-        conn = DB.conn()
+        await conn = DB.conn()
         await conn.execute('''CREATE TABLE IF NOT EXISTS color_random_data(
                                 guild bigint,
                                 role bigint,
@@ -43,7 +43,7 @@ class ColorRandomDataPG:
 
 
     async def check_exists(self, guild: int, role: int):
-        conn = DB.conn()
+        await conn = DB.conn()
         count = await conn.fetchval(r'''
             SELECT COUNT(*)
             FROM color_random_data
@@ -57,7 +57,7 @@ class ColorRandomDataPG:
         log.info('reg_role %d, %d', guild, role)
         ret = False
 
-        conn = DB.conn()
+        await conn = DB.conn()
         if not await self.check_exists(guild, role):
             await conn.execute('''
                 INSERT INTO color_random_data
@@ -70,7 +70,7 @@ class ColorRandomDataPG:
         log.info('unreg_role %d, %d', guild, role)
         ret = False
 
-        conn = DB.conn()
+        await conn = DB.conn()
         if await self.check_exists(guild, role):
             await conn.execute('''
                 DELETE FROM color_random_data
@@ -83,7 +83,7 @@ class ColorRandomDataPG:
         log.info('next_color %d, %d', guild, role)
         ret = False
 
-        conn = DB.conn()
+        await conn = DB.conn()
         if await self.check_exists(guild, role):
             await conn.execute('''
                 UPDATE color_random_data
@@ -104,7 +104,7 @@ class ColorRandomDataPG:
 
     async def get_all_colors(self):
         today_ord= self.today_ord()
-        conn = DB.conn()
+        await conn = DB.conn()
         records = await conn.fetch('''
             SELECT guild, role, shift
             FROM color_random_data
@@ -120,7 +120,7 @@ class ColorRandomDataPG:
         return tomorrow - now + timedelta(seconds=30)
 
     async def get_reg_list(self):
-        conn = DB.conn()
+        await conn = DB.conn()
         records = await conn.fetch('''
             SELECT guild, role, shift
             FROM color_random_data
