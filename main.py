@@ -43,9 +43,9 @@ def run_bot(config):
         logging.info('Use proxy {}'.format(os.environ['https_proxy']))
         options['proxy'] = os.environ['https_proxy']
 
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(DB.connect(config['database_url']))
+    DB.set_uri(config['database_url'])
 
+    loop = asyncio.get_event_loop()
     bot = commands.Bot('$', loop=loop, **options)
     bot.add_command(ping)
     bot.add_command(load_ext)

@@ -28,14 +28,12 @@ def get_hashed_color(role: int, offset: int, days: int):
 
 class ColorRandomDataPG:
     def __init__(self):
-        # task = asyncio.create_task(self.init_db())
         asyncio.get_event_loop().run_until_complete(self.init_db())
-        self.conn: asyncpg.Connection = DB._conn
         self.tzinfo = timezone(timedelta(hours=8))
 
 
     async def init_db(self):
-        conn: asyncpg.Connection = DB._conn
+        conn = DB.conn()
         await conn.execute('''CREATE TABLE IF NOT EXISTS color_random_data(
                                 guild bigint,
                                 role bigint,
@@ -45,9 +43,11 @@ class ColorRandomDataPG:
 
 
     async def check_exists(self, guild: int, role: int):
-        count = await self.conn.fetchval(r'''SELECT COUNT(*)
-                                             FROM color_random_data
-                                             WHERE guild=$1 AND role=$2
+        conn = DB.conn()
+        count = await conn.fetchval(r'''
+            SELECT COUNT(*)
+            FROM color_random_data
+            WHERE guild=$1 AND role=$2
         ''', guild, role)
         log.info("Check exist %d", count)
         return count > 0
@@ -56,8 +56,10 @@ class ColorRandomDataPG:
     async def reg_role(self, guild: int, role: int):
         log.info('reg_role %d, %d', guild, role)
         ret = False
+
+        conn = DB.conn()
         if not await self.check_exists(guild, role):
-            await self.conn.execute('''
+            await conn.execute('''
                 INSERT INTO color_random_data
                 VALUES ($1, $2, 0)
             ''', guild, role)
@@ -67,8 +69,10 @@ class ColorRandomDataPG:
     async def unreg_role(self, guild: int, role: int):
         log.info('unreg_role %d, %d', guild, role)
         ret = False
+
+        conn = DB.conn()
         if await self.check_exists(guild, role):
-            await self.conn.execute('''
+            await conn.execute('''
                 DELETE FROM color_random_data
                 WHERE guild=$1 AND role=$2
             ''', guild, role)
@@ -78,8 +82,10 @@ class ColorRandomDataPG:
     async def next_color(self, guild: int, role: int):
         log.info('next_color %d, %d', guild, role)
         ret = False
+
+        conn = DB.conn()
         if await self.check_exists(guild, role):
-            await self.conn.execute('''
+            await conn.execute('''
                 UPDATE color_random_data
                 SET shift = shift + 1
                 WHERE guild=$1 AND role=$2
@@ -98,7 +104,8 @@ class ColorRandomDataPG:
 
     async def get_all_colors(self):
         today_ord= self.today_ord()
-        records = await self.conn.fetch('''
+        conn = DB.conn()
+        records = await conn.fetch('''
             SELECT guild, role, shift
             FROM color_random_data
         ''')
@@ -113,7 +120,8 @@ class ColorRandomDataPG:
         return tomorrow - now + timedelta(seconds=30)
 
     async def get_reg_list(self):
-        records = await self.conn.fetch('''
+        conn = DB.conn()
+        records = await conn.fetch('''
             SELECT guild, role, shift
             FROM color_random_data
         ''')
