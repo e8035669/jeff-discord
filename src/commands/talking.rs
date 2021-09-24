@@ -1,10 +1,26 @@
-use serenity::framework::standard::{macros::command, CommandResult};
+use serenity::framework::standard::{
+    macros::{command, group},
+    Args, CommandResult,
+};
 use serenity::model::prelude::*;
 use serenity::prelude::*;
 use serenity::utils::MessageBuilder;
 
+#[group]
+#[commands(botsend, ping)]
+struct Talking;
+
 #[command]
-async fn botsend(_ctx: &Context, _msg: &Message) -> CommandResult {
+async fn botsend(ctx: &Context, _msg: &Message, mut args: Args) -> CommandResult {
+    let channel_id = args.single::<u64>()?;
+    let message = args.remains().unwrap_or_default();
+
+    let channel = ctx.http.get_channel(channel_id).await?;
+
+    if let Err(why) = channel.id().say(&ctx.http, message).await {
+        println!("Error sending message: {:?}", why);
+    }
+
     Ok(())
 }
 
