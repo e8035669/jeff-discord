@@ -1,3 +1,5 @@
+use tracing::warn;
+
 use serenity::framework::standard::{
     macros::{command, group},
     Args, CommandResult,
@@ -10,15 +12,22 @@ use serenity::utils::MessageBuilder;
 #[commands(botsend, ping)]
 struct Talking;
 
-#[command]
-async fn botsend(ctx: &Context, _msg: &Message, mut args: Args) -> CommandResult {
+async fn _botsend(ctx: &Context, _msg: &Message, mut args: Args) -> CommandResult {
     let channel_id = args.single::<u64>()?;
-    let message = args.remains().unwrap_or_default();
-
+    let message = args.remains().ok_or("Empty message")?;
     let channel = ctx.http.get_channel(channel_id).await?;
 
     if let Err(why) = channel.id().say(&ctx.http, message).await {
         println!("Error sending message: {:?}", why);
+    }
+
+    Ok(())
+}
+
+#[command]
+async fn botsend(ctx: &Context, _msg: &Message, args: Args) -> CommandResult {
+    if let Err(why) = _botsend(ctx, _msg, args).await {
+        warn!("Error botsend: {:?}", why);
     }
 
     Ok(())
@@ -30,9 +39,11 @@ async fn ping(_ctx: &Context, msg: &Message) -> CommandResult {
         .push("Hello ")
         .mention(&msg.author)
         .build();
+    warn!("Hello");
     if let Err(why) = msg.channel_id.say(&_ctx.http, response).await {
-        println!("Error sending message: {:?}", why);
+        warn!("Error sending message: {:?}", why);
     }
+    warn!("Hello");
 
     Ok(())
 }
