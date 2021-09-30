@@ -34,6 +34,17 @@ impl EventHandler for Handler {
 
     async fn ready(&self, _ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
+
+        tokio::spawn(async move {
+            let color_data = _ctx
+                .data
+                .read()
+                .await
+                .get::<ColorRandomDataContainer>()
+                .unwrap()
+                .clone();
+            color_data.update_loop(&_ctx).await;
+        });
     }
 }
 
@@ -88,9 +99,10 @@ async fn run_bot(config: HashMap<&str, &str>) {
             .expect("Cannot connect to db");
 
         let color_data = ColorRandomData::new(pool.clone());
+        color_data.init().await;
 
         data.insert::<PgContainer>(pool);
-        data.insert::<ColorRandomDataContainer>(Arc::new(Mutex::new(color_data)));
+        data.insert::<ColorRandomDataContainer>(Arc::new(color_data));
     }
 
     if let Err(why) = client.start().await {

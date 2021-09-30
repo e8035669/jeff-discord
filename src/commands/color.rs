@@ -1,15 +1,16 @@
 use std::collections::hash_map::DefaultHasher;
-use std::error::Error;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use tracing::debug;
 use tracing::warn;
 
+use tokio::time::{sleep, Duration};
+
 use chrono::prelude::*;
 
 use serenity::framework::standard::{
     macros::{command, group},
-    Args, CommandResult,
+    Args, CommandError, CommandResult,
 };
 use serenity::model::prelude::*;
 use serenity::prelude::*;
@@ -21,32 +22,113 @@ use sqlx::{Pool, Postgres};
 use colorsys::{Hsl, HslRatio, Rgb};
 
 #[group]
-#[commands(colorreg, colorunref, nextcolor, listregs)]
+#[commands(colorreg, colorunreg, nextcolor, listregs)]
 struct Color;
 
-async fn get_color_data(_ctx: &Context) -> Arc<Mutex<ColorRandomData>> {
+async fn get_color_data(_ctx: &Context) -> Arc<ColorRandomData> {
     let data = _ctx.data.read().await;
     data.get::<ColorRandomDataContainer>()
         .expect("Cannot get color data")
         .clone()
 }
 
+async fn _colorreg(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandResult {
+    let guild_id = _msg
+        .guild_id
+        .ok_or(CommandError::from("message not from guild"))?;
+    let role_id = _args.single::<RoleId>()?;
+
+    if !_msg
+        .guild(&_ctx.cache)
+        .await
+        .ok_or_else(|| CommandError::from("Guild not found"))?
+        .roles
+        .contains_key(&role_id)
+    {
+        return Err("Role not belong to this guild".into());
+    }
+
+    let color_data = get_color_data(_ctx).await;
+    debug!("reg role: {}, {}", guild_id.0, role_id.0);
+    let result = color_data
+        .reg_role(guild_id.0 as i64, role_id.0 as i64)
+        .await?;
+    if result {
+        _msg.reply(&_ctx.http, "OK").await?;
+    } else {
+        _msg.reply(&_ctx.http, "record exists").await?;
+    }
+
+    update_all_colors(_ctx).await?;
+
+    Ok(())
+}
+
 #[command]
 async fn colorreg(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandResult {
-    let role = _args.single::<RoleId>()?;
+    if let Err(why) = _colorreg(_ctx, _msg, _args).await {
+        warn!("Error colorreg {:?}", why);
+    }
+    Ok(())
+}
 
-    debug!("get role: {:?}", role);
+async fn _colorunreg(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandResult {
+    let guild_id = _msg
+        .guild_id
+        .ok_or(CommandError::from("message not from guild"))?;
+    let role_id = _args.single::<RoleId>()?;
+
+    let color_data = get_color_data(_ctx).await;
+    debug!("unreg_role: {}, {}", guild_id.0, role_id.0);
+    let result = color_data
+        .unreg_role(guild_id.0 as i64, role_id.0 as i64)
+        .await?;
+    if result {
+        _msg.reply(&_ctx.http, "OK").await?;
+    } else {
+        _msg.reply(&_ctx.http, "record not exists").await?;
+    }
+
+    update_all_colors(_ctx).await?;
 
     Ok(())
 }
 
 #[command]
-async fn colorunref(_ctx: &Context, _msg: &Message) -> CommandResult {
+async fn colorunreg(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandResult {
+    if let Err(why) = _colorunreg(_ctx, _msg, _args).await {
+        warn!("Error unreg {:?}", why);
+    }
+    Ok(())
+}
+
+async fn _nextcolor(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandResult {
+    let guild_id = _msg
+        .guild_id
+        .ok_or(CommandError::from("message not from guild"))?;
+    let role_id = _args.single::<RoleId>()?;
+
+    let color_data = get_color_data(_ctx).await;
+    debug!("nextcolor: {}, {}", guild_id.0, role_id.0);
+    let result = color_data
+        .next_color(guild_id.0 as i64, role_id.0 as i64)
+        .await?;
+    if result {
+        _msg.reply(&_ctx.http, "OK").await?;
+    } else {
+        _msg.reply(&_ctx.http, "record not exists").await?;
+    }
+
+    update_all_colors(_ctx).await?;
+
     Ok(())
 }
 
 #[command]
-async fn nextcolor(_ctx: &Context, _msg: &Message) -> CommandResult {
+async fn nextcolor(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandResult {
+    if let Err(why) = _nextcolor(_ctx, _msg, _args).await {
+        warn!("Error nextcolor {:?}", why);
+    }
     Ok(())
 }
 
@@ -54,7 +136,7 @@ async fn _listregs(_ctx: &Context, _msg: &Message) -> CommandResult {
     let data = _ctx.data.read().await;
 
     if let Some(color_data) = data.get::<ColorRandomDataContainer>() {
-        let data = color_data.lock().await.get_reg_list().await?;
+        let data = color_data.get_reg_list().await?;
 
         let mut mb = MessageBuilder::new();
         mb.push("List of regs:\n");
@@ -89,10 +171,37 @@ async fn listregs(_ctx: &Context, _msg: &Message) -> CommandResult {
     Ok(())
 }
 
+async fn update_all_colors(_ctx: &Context) -> CommandResult {
+    debug!("update all colors");
+    let color_data = get_color_data(_ctx).await;
+    let colors = color_data.get_all_colors().await?;
+
+    for c in colors.iter() {
+        let guild_id = c.guild;
+        let role_id = c.role;
+        let color = c.color;
+
+        let role = _ctx.cache.role(guild_id as u64, role_id as u64).await;
+
+        match role {
+            Some(role) => {
+                if role.colour != color {
+                    if let Err(why) = role.edit(&_ctx, |r| r.colour(color.0 as u64)).await {
+                        warn!("Cannot edit role {:?}", why);
+                    }
+                }
+            }
+            None => warn!("Cannot get role:"),
+        }
+    }
+
+    Ok(())
+}
+
 pub struct ColorRandomDataContainer;
 
 impl TypeMapKey for ColorRandomDataContainer {
-    type Value = Arc<Mutex<ColorRandomData>>;
+    type Value = Arc<ColorRandomData>;
 }
 
 #[allow(dead_code)]
@@ -135,8 +244,8 @@ impl ColorRandomData {
         .expect("Create table failed");
     }
 
-    pub async fn check_exists(&self, guild: i64, role: i64) -> Result<bool, Box<dyn Error>> {
-        let (count,): (i32,) = sqlx::query_as(
+    pub async fn check_exists(&self, guild: i64, role: i64) -> Result<bool, sqlx::Error> {
+        let (count,): (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM color_random_data
              WHERE guild=$1 and role=$2",
         )
@@ -148,7 +257,7 @@ impl ColorRandomData {
         Ok(count > 0)
     }
 
-    pub async fn reg_role(&self, guild: i64, role: i64) -> Result<bool, Box<dyn Error>> {
+    pub async fn reg_role(&self, guild: i64, role: i64) -> Result<bool, sqlx::Error> {
         if !self.check_exists(guild, role).await? {
             sqlx::query(
                 "INSERT INTO color_random_data
@@ -164,7 +273,7 @@ impl ColorRandomData {
         }
     }
 
-    pub async fn unreg_role(&self, guild: i64, role: i64) -> Result<bool, Box<dyn Error>> {
+    pub async fn unreg_role(&self, guild: i64, role: i64) -> Result<bool, sqlx::Error> {
         if self.check_exists(guild, role).await? {
             sqlx::query(
                 "DELETE FROM color_random_data
@@ -180,7 +289,7 @@ impl ColorRandomData {
         }
     }
 
-    pub async fn next_color(&self, guild: i64, role: i64) -> Result<bool, Box<dyn Error>> {
+    pub async fn next_color(&self, guild: i64, role: i64) -> Result<bool, sqlx::Error> {
         if self.check_exists(guild, role).await? {
             sqlx::query(
                 "UPDATE color_random_data
@@ -240,6 +349,17 @@ impl ColorRandomData {
             .num_seconds_from_midnight();
         86400 - secs + 30
     }
+
+    pub async fn update_loop(&self, _ctx: &Context) {
+        loop {
+            if let Err(why) = update_all_colors(_ctx).await {
+                warn!("update loop error: {:?}", why);
+            }
+            let wait_sec = self.get_waiting_time();
+            debug!("Wait for {} seconds for next loop", wait_sec);
+            sleep(Duration::new(wait_sec as u64, 0)).await;
+        }
+    }
 }
 
 #[derive(Hash)]
@@ -262,7 +382,8 @@ fn get_hash(role: i64, offset: i32, day_ord: i32) -> u64 {
     let mut hasher = DefaultHasher::new();
     let t = RandomTuple(role, offset, day_ord);
     t.hash(&mut hasher);
-    hasher.finish()
+    let ret = hasher.finish();
+    ret
 }
 
 fn get_hashed_color(role: i64, offset: i32, day_ord: i32) -> Colour {
