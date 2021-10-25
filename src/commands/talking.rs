@@ -12,7 +12,9 @@ use serenity::utils::MessageBuilder;
 #[commands(botsend, ping)]
 struct Talking;
 
-async fn _botsend(ctx: &Context, _msg: &Message, mut args: Args) -> CommandResult {
+#[command]
+#[owners_only]
+async fn botsend(ctx: &Context, _msg: &Message, mut args: Args) -> CommandResult {
     let channel_id = args.single::<u64>()?;
     let message = args.remains().ok_or("Empty message")?;
     let channel = ctx.http.get_channel(channel_id).await?;
@@ -20,16 +22,6 @@ async fn _botsend(ctx: &Context, _msg: &Message, mut args: Args) -> CommandResul
     if let Err(why) = channel.id().say(&ctx.http, message).await {
         println!("Error sending message: {:?}", why);
     }
-
-    Ok(())
-}
-
-#[command]
-async fn botsend(ctx: &Context, _msg: &Message, args: Args) -> CommandResult {
-    if let Err(why) = _botsend(ctx, _msg, args).await {
-        warn!("Error botsend: {:?}", why);
-    }
-
     Ok(())
 }
 

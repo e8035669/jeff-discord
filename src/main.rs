@@ -11,11 +11,22 @@ use tracing_subscriber::filter::LevelFilter;
 use serenity::{
     async_trait,
     client::ClientBuilder,
-    // utils::MessageBuilder,
+    framework::standard::help_commands,
+    framework::standard::macros::help,
+    framework::standard::macros::hook,
+    framework::standard::Args,
+    framework::standard::CommandError,
+    framework::standard::CommandGroup,
+    framework::standard::CommandResult,
+    framework::standard::HelpOptions,
     framework::StandardFramework,
     http::Http,
-    model::{channel::Message, gateway::Ready},
+    model::channel::Message,
+    model::gateway::Ready,
+    model::gateway::Activity,
+    model::id::UserId,
     prelude::*,
+    //
 };
 
 use sqlx::postgres::PgPoolOptions;
@@ -35,6 +46,8 @@ impl EventHandler for Handler {
     async fn ready(&self, _ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
 
+        _ctx.set_activity(Activity::listening("純音樂")).await;
+
         tokio::spawn(async move {
             let color_data = _ctx
                 .data
@@ -45,7 +58,39 @@ impl EventHandler for Handler {
                 .clone();
             color_data.update_loop(&_ctx).await;
         });
+
     }
+}
+
+#[hook]
+async fn before_hook(_ctx: &Context, _msg: &Message, _command_name: &str) -> bool {
+    println!("Running command {}", _command_name);
+    true
+}
+
+#[hook]
+async fn after_hook(
+    _ctx: &Context,
+    _msg: &Message,
+    cmd_name: &str,
+    error: Result<(), CommandError>,
+) {
+    if let Err(why) = error {
+        println!("Error in {}: {:?}", cmd_name, why);
+    }
+}
+
+#[help]
+async fn my_help(
+    context: &Context,
+    msg: &Message,
+    args: Args,
+    help_options: &'static HelpOptions,
+    groups: &[&'static CommandGroup],
+    owners: HashSet<UserId>,
+) -> CommandResult {
+    let _ = help_commands::with_embeds(context, msg, args, help_options, groups, owners).await;
+    Ok(())
 }
 
 async fn run_bot(config: HashMap<&str, &str>) {
@@ -73,7 +118,10 @@ async fn run_bot(config: HashMap<&str, &str>) {
     let framework = StandardFramework::new()
         .configure(|c| c.owners(owners).prefix("$"))
         .group(&TALKING_GROUP)
-        .group(&COLOR_GROUP);
+        .group(&COLOR_GROUP)
+        .help(&MY_HELP)
+        .before(before_hook)
+        .after(after_hook);
 
     let mut client = ClientBuilder::new_with_http(http)
         .event_handler(Handler)

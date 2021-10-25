@@ -32,7 +32,8 @@ async fn get_color_data(_ctx: &Context) -> Arc<ColorRandomData> {
         .clone()
 }
 
-async fn _colorreg(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandResult {
+#[command]
+async fn colorreg(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandResult {
     let guild_id = _msg
         .guild_id
         .ok_or(CommandError::from("message not from guild"))?;
@@ -65,14 +66,7 @@ async fn _colorreg(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandRe
 }
 
 #[command]
-async fn colorreg(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandResult {
-    if let Err(why) = _colorreg(_ctx, _msg, _args).await {
-        warn!("Error colorreg {:?}", why);
-    }
-    Ok(())
-}
-
-async fn _colorunreg(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandResult {
+async fn colorunreg(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandResult {
     let guild_id = _msg
         .guild_id
         .ok_or(CommandError::from("message not from guild"))?;
@@ -95,14 +89,7 @@ async fn _colorunreg(_ctx: &Context, _msg: &Message, mut _args: Args) -> Command
 }
 
 #[command]
-async fn colorunreg(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandResult {
-    if let Err(why) = _colorunreg(_ctx, _msg, _args).await {
-        warn!("Error unreg {:?}", why);
-    }
-    Ok(())
-}
-
-async fn _nextcolor(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandResult {
+async fn nextcolor(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandResult {
     let guild_id = _msg
         .guild_id
         .ok_or(CommandError::from("message not from guild"))?;
@@ -125,14 +112,7 @@ async fn _nextcolor(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandR
 }
 
 #[command]
-async fn nextcolor(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandResult {
-    if let Err(why) = _nextcolor(_ctx, _msg, _args).await {
-        warn!("Error nextcolor {:?}", why);
-    }
-    Ok(())
-}
-
-async fn _listregs(_ctx: &Context, _msg: &Message) -> CommandResult {
+async fn listregs(_ctx: &Context, _msg: &Message) -> CommandResult {
     let data = _ctx.data.read().await;
 
     if let Some(color_data) = data.get::<ColorRandomDataContainer>() {
@@ -158,15 +138,6 @@ async fn _listregs(_ctx: &Context, _msg: &Message) -> CommandResult {
             ));
         }
         _msg.channel_id.say(&_ctx.http, mb.build()).await?;
-    }
-    Ok(())
-}
-
-#[command]
-async fn listregs(_ctx: &Context, _msg: &Message) -> CommandResult {
-    debug!("listregs");
-    if let Err(why) = _listregs(_ctx, _msg).await {
-        warn!("Error listreg: {:?}", why);
     }
     Ok(())
 }
