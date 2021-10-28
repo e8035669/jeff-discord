@@ -22,8 +22,8 @@ use serenity::{
     framework::StandardFramework,
     http::Http,
     model::channel::Message,
-    model::gateway::Ready,
     model::gateway::Activity,
+    model::gateway::Ready,
     model::id::UserId,
     prelude::*,
     //
@@ -46,7 +46,8 @@ impl EventHandler for Handler {
     async fn ready(&self, _ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
 
-        _ctx.set_activity(Activity::listening("純音樂")).await;
+        _ctx.set_activity(Activity::listening("來自內心的聲音"))
+            .await;
 
         tokio::spawn(async move {
             let color_data = _ctx
@@ -58,7 +59,6 @@ impl EventHandler for Handler {
                 .clone();
             color_data.update_loop(&_ctx).await;
         });
-
     }
 }
 
@@ -81,6 +81,9 @@ async fn after_hook(
 }
 
 #[help]
+#[individual_command_tip = "嗨 我是薏仁的機器人，可以用的指令如下："]
+#[command_not_found_text = "找不到指令: '{}'"]
+#[strikethrough_commands_tip_in_guild = ""]
 async fn my_help(
     context: &Context,
     msg: &Message,

@@ -21,6 +21,7 @@ use sqlx::{Pool, Postgres};
 
 use colorsys::{Hsl, HslRatio, Rgb};
 
+/// 變色龍指令，在每天午夜隨機新的顏色
 #[group]
 #[commands(colorreg, colorunreg, nextcolor, listregs)]
 struct Color;
@@ -32,7 +33,9 @@ async fn get_color_data(_ctx: &Context) -> Arc<ColorRandomData> {
         .clone()
 }
 
+/// 註冊一個身份組，將在每天午夜換上新的顏色
 #[command]
+#[usage = "<role>"]
 async fn colorreg(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandResult {
     let guild_id = _msg
         .guild_id
@@ -65,7 +68,9 @@ async fn colorreg(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandRes
     Ok(())
 }
 
+/// 解除註冊身份組，將不會再更換顏色
 #[command]
+#[usage = "<role>"]
 async fn colorunreg(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandResult {
     let guild_id = _msg
         .guild_id
@@ -88,7 +93,9 @@ async fn colorunreg(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandR
     Ok(())
 }
 
+/// 馬上換新的顏色，可以在顏色不好看的時候使用
 #[command]
+#[usage = "<role>"]
 async fn nextcolor(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandResult {
     let guild_id = _msg
         .guild_id
@@ -111,7 +118,9 @@ async fn nextcolor(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandRe
     Ok(())
 }
 
+/// 列出已經註冊的身份組
 #[command]
+#[usage = ""]
 async fn listregs(_ctx: &Context, _msg: &Message) -> CommandResult {
     let data = _ctx.data.read().await;
 
