@@ -9,7 +9,7 @@ edition = "2018"
 tracing = "0.1"
 tracing-subscriber = "0.2"
 chrono = "0.4"
-colorsys = "=0.6.4"
+colorsys = "*"
 regex = "1"
 tokio = { version = "1", features = ["full"]  }
 serenity = "0.10"

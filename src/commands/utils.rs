@@ -9,6 +9,7 @@ impl TypeMapKey for PgContainer {
     type Value = Pool<Postgres>;
 }
 
+#[allow(dead_code)]
 pub fn custom_activity<N>(message: N) -> Activity
 where
     N: ToString,
