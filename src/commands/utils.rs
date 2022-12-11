@@ -1,12 +1,12 @@
 use serenity::prelude::*;
 use serenity::{model::gateway::Activity, model::gateway::ActivityType};
 use sqlx::Pool;
-use sqlx::Postgres;
+use sqlx::Any;
 
 pub struct PgContainer;
 
 impl TypeMapKey for PgContainer {
-    type Value = Pool<Postgres>;
+    type Value = Pool<Any>;
 }
 
 #[allow(dead_code)]

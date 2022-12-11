@@ -10,7 +10,6 @@ use tracing_subscriber::filter::LevelFilter;
 
 use serenity::{
     async_trait,
-    client::ClientBuilder,
     framework::standard::help_commands,
     framework::standard::macros::help,
     framework::standard::macros::hook,
@@ -29,7 +28,7 @@ use serenity::{
     //
 };
 
-use sqlx::postgres::PgPoolOptions;
+use sqlx::any::AnyPoolOptions;
 
 use commands::color::*;
 use commands::talking::*;
@@ -106,7 +105,7 @@ async fn run_bot(config: HashMap<&str, &str>) {
         .compact()
         .init();
 
-    let http = Http::new_with_token(config["token"]);
+    let http = Http::new(config["token"]);
 
     let (owners, _bot_id) = match http.get_current_application_info().await {
         Ok(info) => {
@@ -126,9 +125,15 @@ async fn run_bot(config: HashMap<&str, &str>) {
         .before(before_hook)
         .after(after_hook);
 
-    let mut client = ClientBuilder::new_with_http(http)
+    let intents = GatewayIntents::GUILDS
+        | GatewayIntents::GUILD_MESSAGES
+        | GatewayIntents::GUILD_MEMBERS
+        | GatewayIntents::MESSAGE_CONTENT;
+
+    let mut client = Client::builder(config["token"], intents)
         .event_handler(Handler)
         .framework(framework)
+        .cache_settings(|s| s.max_messages(1000))
         .await
         .expect("Err creating client");
 
@@ -143,7 +148,7 @@ async fn run_bot(config: HashMap<&str, &str>) {
 
     {
         let mut data = client.data.write().await;
-        let pool = PgPoolOptions::new()
+        let pool = AnyPoolOptions::new()
             .max_connections(5)
             .connect(config["database_url"])
             .await

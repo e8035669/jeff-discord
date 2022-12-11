@@ -17,7 +17,7 @@ use serenity::prelude::*;
 use serenity::utils::Colour;
 use serenity::utils::MessageBuilder;
 
-use sqlx::{Pool, Postgres};
+use sqlx::{Any, Pool};
 
 use colorsys::{Hsl, HslRatio, Rgb};
 
@@ -37,6 +37,7 @@ async fn get_color_data(_ctx: &Context) -> Arc<ColorRandomData> {
 #[command]
 #[usage = "<role>"]
 async fn colorreg(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandResult {
+    debug!("msg: {:?}", _msg);
     let guild_id = _msg
         .guild_id
         .ok_or(CommandError::from("message not from guild"))?;
@@ -44,7 +45,6 @@ async fn colorreg(_ctx: &Context, _msg: &Message, mut _args: Args) -> CommandRes
 
     if !_msg
         .guild(&_ctx.cache)
-        .await
         .ok_or_else(|| CommandError::from("Guild not found"))?
         .roles
         .contains_key(&role_id)
@@ -130,16 +130,8 @@ async fn listregs(_ctx: &Context, _msg: &Message) -> CommandResult {
         let mut mb = MessageBuilder::new();
         mb.push("List of regs:\n");
         for (i, d) in data.iter().enumerate() {
-            let guild = _ctx
-                .cache
-                .guild(d.guild as u64)
-                .await
-                .ok_or("no guild name")?;
-            let role = _ctx
-                .cache
-                .role(guild.id, d.role as u64)
-                .await
-                .ok_or("no role")?;
+            let guild = _ctx.cache.guild(d.guild as u64).ok_or("no guild name")?;
+            let role = _ctx.cache.role(guild.id, d.role as u64).ok_or("no role")?;
 
             mb.push(format!(
                 "{}. [{}] [{}] offset:{}\n",
@@ -161,7 +153,7 @@ async fn update_all_colors(_ctx: &Context) -> CommandResult {
         let role_id = c.role;
         let color = c.color;
 
-        let role = _ctx.cache.role(guild_id as u64, role_id as u64).await;
+        let role = _ctx.cache.role(guild_id as u64, role_id as u64);
 
         match role {
             Some(role) => {
@@ -201,16 +193,16 @@ pub struct ColorRecord {
 
 #[allow(dead_code)]
 pub struct ColorRandomData {
-    pool: Pool<Postgres>,
+    pool: Pool<Any>,
     gmt8: FixedOffset,
 }
 
 #[allow(dead_code)]
 impl ColorRandomData {
-    pub fn new(pool: Pool<Postgres>) -> Self {
+    pub fn new(pool: Pool<Any>) -> Self {
         Self {
             pool,
-            gmt8: FixedOffset::east(8 * 3600),
+            gmt8: FixedOffset::east_opt(8 * 3600).unwrap(),
         }
     }
 
@@ -315,8 +307,8 @@ impl ColorRandomData {
         get_hashed_color(role, offset, self.today_ord())
     }
 
-    pub fn today(&self) -> Date<FixedOffset> {
-        Utc::now().with_timezone(&self.gmt8).date()
+    pub fn today(&self) -> NaiveDate {
+        Utc::now().with_timezone(&self.gmt8).date_naive()
     }
 
     pub fn today_ord(&self) -> i32 {
