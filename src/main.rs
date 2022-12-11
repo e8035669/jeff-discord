@@ -24,6 +24,7 @@ use serenity::{
     model::gateway::Activity,
     model::gateway::Ready,
     model::id::UserId,
+    model::prelude::*,
     prelude::*,
     //
 };
@@ -31,6 +32,7 @@ use serenity::{
 use sqlx::any::AnyPoolOptions;
 
 use commands::color::*;
+use commands::statistic::*;
 use commands::talking::*;
 use commands::utils::*;
 
@@ -39,7 +41,7 @@ struct Handler;
 #[async_trait]
 impl EventHandler for Handler {
     async fn message(&self, _ctx: Context, msg: Message) {
-        info!("{}: {}", msg.author.name, msg.content)
+        info!("{}: {}", msg.author.name, msg.content);
     }
 
     async fn ready(&self, _ctx: Context, ready: Ready) {
@@ -121,6 +123,7 @@ async fn run_bot(config: HashMap<&str, &str>) {
         .configure(|c| c.owners(owners).prefix("$"))
         .group(&TALKING_GROUP)
         .group(&COLOR_GROUP)
+        .group(&STATISTIC_GROUP)
         .help(&MY_HELP)
         .before(before_hook)
         .after(after_hook);
