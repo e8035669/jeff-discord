@@ -7,10 +7,15 @@ use serenity::framework::standard::{
 };
 use serenity::utils::parse_emoji;
 use std::collections::HashMap;
+use std::time::Duration as StdDuration;
 use tracing::debug;
 
+use serenity::futures::StreamExt;
+use serenity::model::application::interaction::InteractionResponseType;
 use serenity::model::prelude::*;
 use serenity::prelude::*;
+
+use crate::commands::utils::argsort;
 
 /// 統計某些東西
 #[group]
@@ -31,31 +36,79 @@ async fn emojistat(_ctx: &Context, _msg: &Message) -> CommandResult {
     }
 
     let current_time = Utc::now();
+    let old_time = current_time - Duration::seconds(60);
 
-    let ch = _msg.channel(&_ctx).await?;
-    if let Channel::Guild(ch) = ch {
-        let old_time = current_time - Duration::seconds(60);
+    let channels = &_guild.channels;
 
-        let msgs = query_messages(&_ctx, &ch, old_time.into()).await?;
+    for ch in channels.values() {
+        if let Channel::Guild(ch) = ch {
+            let msgs = query_messages(&_ctx, &ch, old_time.into()).await?;
 
-        let msgs2: Vec<_> = msgs.into_values().map(|m| m.content).collect();
+            let msgs2: Vec<_> = msgs.into_values().map(|m| m.content).collect();
 
-        lazy_static! {
-            static ref RE: Regex = Regex::new(r"(<a?)?:\w+:(\d{18}>)?").unwrap();
+            lazy_static! {
+                static ref RE: Regex = Regex::new(r"(<a?)?:\w+:(\d{18}>)?").unwrap();
+            }
+
+            let emojis: Vec<EmojiId> = msgs2
+                .iter()
+                .flat_map(|m| RE.find_iter(m).filter_map(|e| parse_emoji(e.as_str())))
+                .filter(|e| guild_emoji.contains_key(&e.id))
+                .map(|e| e.id)
+                .collect();
+
+            emojis.iter().for_each(|e| *counts.get_mut(e).unwrap() += 1);
+
+            for (k, v) in counts.iter() {
+                let e = guild_emoji.get(k).unwrap();
+                debug!("{}: {}", e.name, v);
+            }
         }
+    }
 
-        let emojis: Vec<EmojiId> = msgs2
-            .iter()
-            .flat_map(|m| RE.find_iter(m).filter_map(|e| parse_emoji(e.as_str())))
-            .filter(|e| guild_emoji.contains_key(&e.id))
-            .map(|e| e.id)
-            .collect();
+    let mut counts = counts.into_iter().collect::<Vec<_>>();
+    counts.sort_by(|a, b| b.1.cmp(&a.1));
 
-        emojis.iter().for_each(|e| *counts.get_mut(e).unwrap() += 1);
+    let mut messages: Vec<String> = Vec::new();
+    for (e, c) in counts.iter() {
+        let e2 = guild_emoji.get(e).unwrap();
+        messages.push(format!("{}: {}", e2, c));
+    }
 
-        for (k, v) in counts.iter() {
-            let e = guild_emoji.get(k).unwrap();
-            debug!("{}: {}", e.name, v);
+    let mut current_page = 0;
+
+    let mut m = _msg
+        .channel_id
+        .send_message(&_ctx, |m| {
+            m.content(&messages[current_page]).components(|c| {
+                c.create_action_row(|row| row.create_button(|b| b.label("Next").custom_id("1")))
+            })
+        })
+        .await?;
+
+    let mut interaction_stream = m
+        .await_component_interactions(&_ctx)
+        .timeout(StdDuration::from_secs(60 * 3))
+        .build();
+
+    while let Some(interaction) = interaction_stream.next().await {
+        match interaction.data.custom_id.as_str() {
+            "1" => {
+                current_page = (current_page + 1) % messages.len();
+                interaction
+                    .create_interaction_response(&_ctx, |r| {
+                        r.kind(InteractionResponseType::UpdateMessage)
+                            .interaction_response_data(|m| {
+                                m.content(&messages[current_page]).components(|c| {
+                                    c.create_action_row(|row| {
+                                        row.create_button(|b| b.label("Next").custom_id("1"))
+                                    })
+                                })
+                            })
+                    })
+                    .await?;
+            }
+            _ => break,
         }
     }
 
