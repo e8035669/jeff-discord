@@ -1,37 +1,119 @@
+use crate::{Context, Error};
+use chrono::prelude::*;
+use colorsys::{Hsl, HslRatio, Rgb};
+use poise::serenity_prelude::{CacheHttp, Colour, MessageBuilder, RoleId};
+use sqlx::{Any, Pool};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
+use tokio::time::{sleep, Duration};
 use tracing::debug;
 use tracing::warn;
 
-use tokio::time::{sleep, Duration};
 
-use chrono::prelude::*;
+/// 註冊一個身份組，將在每天午夜換上新的顏色
+#[poise::command(slash_command, prefix_command, category = "color")]
+pub async fn colorreg(_ctx: Context<'_>, role_id: RoleId) -> Result<(), Error> {
+    let guild_id = _ctx.guild_id().ok_or("message not from guild")?;
 
-use serenity::framework::standard::{
-    macros::{command, group},
-    Args, CommandError, CommandResult,
-};
-use serenity::model::prelude::*;
-use serenity::prelude::*;
-use serenity::utils::Colour;
-use serenity::utils::MessageBuilder;
+    if !_ctx
+        .guild()
+        .ok_or_else(|| "Guild not found")?
+        .roles
+        .contains_key(&role_id)
+    {
+        return Err("Role not belong to this guild".into());
+    }
 
-use sqlx::{Any, Pool};
+    let color_data = get_color_data(&_ctx).await;
+    debug!("reg role: {}, {}", guild_id.0, role_id.0);
+    let result = color_data
+        .reg_role(guild_id.0 as i64, role_id.0 as i64)
+        .await?;
+    if result {
+        _ctx.say("OK").await?;
+    } else {
+        _ctx.say("record exists").await?;
+    }
 
-use colorsys::{Hsl, HslRatio, Rgb};
+    update_all_colors(&_ctx, &color_data).await?;
 
+    Ok(())
+}
+
+/// 解除註冊身份組，將不會再更換顏色
+#[poise::command(slash_command, prefix_command, category = "color")]
+pub async fn colorunreg(_ctx: Context<'_>, role_id: RoleId) -> Result<(), Error> {
+    let guild_id = _ctx.guild_id().ok_or("message not from guild")?;
+
+    let color_data = get_color_data(&_ctx).await;
+    debug!("unreg_role: {}, {}", guild_id.0, role_id.0);
+    let result = color_data
+        .unreg_role(guild_id.0 as i64, role_id.0 as i64)
+        .await?;
+    if result {
+        _ctx.say("OK").await?;
+    } else {
+        _ctx.say("record not exists").await?;
+    }
+
+    update_all_colors(&_ctx, &color_data).await?;
+
+    Ok(())
+}
+
+/// 馬上換新的顏色，可以在顏色不好看的時候使用
+#[poise::command(slash_command, prefix_command, category = "color")]
+pub async fn nextcolor(_ctx: Context<'_>, role_id: RoleId) -> Result<(), Error> {
+    let guild_id = _ctx.guild_id().ok_or("message not from guild")?;
+
+    let color_data = get_color_data(&_ctx).await;
+    debug!("nextcolor: {}, {}", guild_id.0, role_id.0);
+    let result = color_data
+        .next_color(guild_id.0 as i64, role_id.0 as i64)
+        .await?;
+    if result {
+        _ctx.say("OK").await?;
+    } else {
+        _ctx.say("record not exists").await?;
+    }
+
+    update_all_colors(&_ctx, &color_data).await?;
+
+    Ok(())
+}
+
+/// 列出已經註冊的身份組
+#[poise::command(slash_command, prefix_command, category = "color")]
+pub async fn listregs(_ctx: Context<'_>) -> Result<(), Error> {
+    let color_data = _ctx.data().color_data.clone();
+    let data = color_data.get_reg_list().await?;
+
+    let mut mb = MessageBuilder::new();
+    mb.push("List of regs:\n");
+
+    let cache = _ctx.cache().ok_or("Cannot get cache")?;
+
+    for (i, d) in data.iter().enumerate() {
+        let guild = cache.guild(d.guild as u64).ok_or("no guild name")?;
+        let role = cache.role(guild.id, d.role as u64).ok_or("no role")?;
+
+        mb.push(format!(
+            "{}. [{}] [{}] offset:{}\n",
+            i, guild.name, role.name, d.shift
+        ));
+    }
+
+    _ctx.say(mb.build()).await?;
+    Ok(())
+}
+
+/*
 /// 變色龍指令，在每天午夜隨機新的顏色
 #[group]
 #[commands(colorreg, colorunreg, nextcolor, listregs)]
 struct Color;
 
-async fn get_color_data(_ctx: &Context) -> Arc<ColorRandomData> {
-    let data = _ctx.data.read().await;
-    data.get::<ColorRandomDataContainer>()
-        .expect("Cannot get color data")
-        .clone()
-}
 
 /// 註冊一個身份組，將在每天午夜換上新的顏色
 #[command]
@@ -142,23 +224,31 @@ async fn listregs(_ctx: &Context, _msg: &Message) -> CommandResult {
     }
     Ok(())
 }
+*/
 
-async fn update_all_colors(_ctx: &Context) -> CommandResult {
+async fn get_color_data(_ctx: &Context<'_>) -> Arc<ColorRandomData> {
+    _ctx.data().color_data.clone()
+}
+
+async fn update_all_colors<T>(_ctx: &T, color_data: &ColorRandomData) -> Result<(), Error>
+where
+    T: CacheHttp,
+{
     debug!("update all colors");
-    let color_data = get_color_data(_ctx).await;
     let colors = color_data.get_all_colors().await?;
 
+    let cache = _ctx.cache().ok_or("Cannot get cache")?;
     for c in colors.iter() {
         let guild_id = c.guild;
         let role_id = c.role;
         let color = c.color;
 
-        let role = _ctx.cache.role(guild_id as u64, role_id as u64);
+        let role = cache.role(guild_id as u64, role_id as u64);
 
         match role {
             Some(role) => {
                 if role.colour != color {
-                    if let Err(why) = role.edit(&_ctx, |r| r.colour(color.0 as u64)).await {
+                    if let Err(why) = role.edit(_ctx.http(), |r| r.colour(color.0 as u64)).await {
                         warn!("Cannot edit role {:?}", why);
                     }
                 }
@@ -168,12 +258,6 @@ async fn update_all_colors(_ctx: &Context) -> CommandResult {
     }
 
     Ok(())
-}
-
-pub struct ColorRandomDataContainer;
-
-impl TypeMapKey for ColorRandomDataContainer {
-    type Value = Arc<ColorRandomData>;
 }
 
 #[allow(dead_code)]
@@ -322,9 +406,12 @@ impl ColorRandomData {
         86400 - secs + 30
     }
 
-    pub async fn update_loop(&self, _ctx: &Context) {
+    pub async fn update_loop<T>(&self, _ctx: &T)
+    where
+        T: CacheHttp,
+    {
         loop {
-            if let Err(why) = update_all_colors(_ctx).await {
+            if let Err(why) = update_all_colors(_ctx, self).await {
                 warn!("update loop error: {:?}", why);
             }
             let wait_sec = self.get_waiting_time();

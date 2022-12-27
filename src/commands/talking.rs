@@ -1,13 +1,38 @@
+use crate::{Context, Error};
+use poise::serenity_prelude as serenity;
 use tracing::warn;
 
-use serenity::framework::standard::{
-    macros::{command, group},
-    Args, CommandResult,
-};
-use serenity::model::prelude::*;
-use serenity::prelude::*;
-use serenity::utils::MessageBuilder;
+/// 讓機器人去某個頻道說話
+#[poise::command(prefix_command, slash_command, category = "talking", owners_only)]
+pub async fn botsend(
+    ctx: Context<'_>,
+    #[description = "Channel id"] channel_id: u64,
+    #[description = "Message to send"] message: String,
+) -> Result<(), Error> {
+    let channel = ctx.serenity_context().http.get_channel(channel_id).await?;
 
+    if let Err(why) = channel.id().say(&ctx, message).await {
+        println!("Error sending message: {:?}", why);
+    }
+
+    Ok(())
+}
+
+/// 跟機器人問早
+#[poise::command(prefix_command, slash_command, category = "talking")]
+pub async fn ping(ctx: Context<'_>) -> Result<(), Error> {
+    let response = serenity::MessageBuilder::new()
+        .push("Hello ")
+        .mention(ctx.author())
+        .build();
+    if let Err(why) = ctx.say(response).await {
+        warn!("Error sending message: {:?}", why);
+    }
+
+    Ok(())
+}
+
+/*
 /// 操控機器人說話的指令
 #[group]
 #[commands(botsend, ping)]
@@ -41,3 +66,4 @@ async fn ping(_ctx: &Context, msg: &Message) -> CommandResult {
 
     Ok(())
 }
+*/

@@ -1,13 +1,5 @@
-use serenity::prelude::*;
-use serenity::{model::gateway::Activity, model::gateway::ActivityType};
-use sqlx::Any;
-use sqlx::Pool;
-
-pub struct PgContainer;
-
-impl TypeMapKey for PgContainer {
-    type Value = Pool<Any>;
-}
+// use poise::serenity_prelude as serenity;
+use poise::serenity_prelude::{Activity, ActivityType};
 
 #[allow(dead_code)]
 pub fn custom_activity<N>(message: N) -> Activity
