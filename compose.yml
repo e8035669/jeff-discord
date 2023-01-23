@@ -1,0 +1,10 @@
+services:
+    app:
+        image: jeff-discord
+        build: .
+        volumes:
+            - ./dbdata:/dbdata
+        working_dir: /dbdata
+        env_file:
+            - .env
+
