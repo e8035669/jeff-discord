@@ -92,7 +92,7 @@ pub async fn listregs(_ctx: Context<'_>) -> Result<(), Error> {
     let mut mb = MessageBuilder::new();
     mb.push("List of regs:\n");
 
-    let cache = _ctx.cache().ok_or("Cannot get cache")?;
+    let cache = _ctx.cache();
 
     for (i, d) in data.iter().enumerate() {
         let guild = cache.guild(d.guild as u64).ok_or("no guild name")?;
