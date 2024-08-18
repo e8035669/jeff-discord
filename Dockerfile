@@ -1,7 +1,8 @@
 ARG BASE_IMAGE=messense/rust-musl-cross:armv7-musleabihf
 
 FROM ${BASE_IMAGE} AS builder
-ADD . ./
+ADD Cargo.toml ./Cargo.toml
+ADD src ./src
 RUN cargo build --release
 RUN musl-strip target/armv7-unknown-linux-musleabihf/release/jeff-discord
 
@@ -11,5 +12,5 @@ FROM scratch
 COPY --from=builder \
     /home/rust/src/target/armv7-unknown-linux-musleabihf/release/jeff-discord \
     /usr/local/bin/
-CMD /usr/local/bin/jeff-discord
+ENTRYPOINT ["/usr/local/bin/jeff-discord"]
 
