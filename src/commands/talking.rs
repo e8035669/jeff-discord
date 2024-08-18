@@ -1,5 +1,5 @@
 use crate::{Context, Error};
-use poise::serenity_prelude as serenity;
+use poise::serenity_prelude::{self as serenity, ChannelId};
 use tracing::warn;
 
 /// 讓機器人去某個頻道說話
@@ -9,7 +9,11 @@ pub async fn botsend(
     #[description = "Channel id"] channel_id: u64,
     #[description = "Message to send"] message: String,
 ) -> Result<(), Error> {
-    let channel = ctx.serenity_context().http.get_channel(channel_id).await?;
+    let channel = ctx
+        .serenity_context()
+        .http
+        .get_channel(ChannelId::new(channel_id))
+        .await?;
 
     if let Err(why) = channel.id().say(&ctx, message).await {
         println!("Error sending message: {:?}", why);

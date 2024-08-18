@@ -1,7 +1,7 @@
 use crate::{Context, Error};
 use chrono::prelude::*;
 use colorsys::{Hsl, HslRatio, Rgb};
-use poise::serenity_prelude::{CacheHttp, Colour, MessageBuilder, RoleId};
+use poise::serenity_prelude::{CacheHttp, Colour, MessageBuilder, RoleId, EditRole, Guild};
 use sqlx::{Any, Pool};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -26,9 +26,9 @@ pub async fn colorreg(_ctx: Context<'_>, role_id: RoleId) -> Result<(), Error> {
     }
 
     let color_data = get_color_data(&_ctx).await;
-    debug!("reg role: {}, {}", guild_id.0, role_id.0);
+    debug!("reg role: {}, {}", guild_id.get(), role_id.get());
     let result = color_data
-        .reg_role(guild_id.0 as i64, role_id.0 as i64)
+        .reg_role(guild_id.get() as i64, role_id.get() as i64)
         .await?;
     if result {
         _ctx.say("OK").await?;
@@ -47,9 +47,9 @@ pub async fn colorunreg(_ctx: Context<'_>, role_id: RoleId) -> Result<(), Error>
     let guild_id = _ctx.guild_id().ok_or("message not from guild")?;
 
     let color_data = get_color_data(&_ctx).await;
-    debug!("unreg_role: {}, {}", guild_id.0, role_id.0);
+    debug!("unreg_role: {}, {}", guild_id.get(), role_id.get());
     let result = color_data
-        .unreg_role(guild_id.0 as i64, role_id.0 as i64)
+        .unreg_role(guild_id.get() as i64, role_id.get() as i64)
         .await?;
     if result {
         _ctx.say("OK").await?;
@@ -68,9 +68,9 @@ pub async fn nextcolor(_ctx: Context<'_>, role_id: RoleId) -> Result<(), Error> 
     let guild_id = _ctx.guild_id().ok_or("message not from guild")?;
 
     let color_data = get_color_data(&_ctx).await;
-    debug!("nextcolor: {}, {}", guild_id.0, role_id.0);
+    debug!("nextcolor: {}, {}", guild_id.get(), role_id.get());
     let result = color_data
-        .next_color(guild_id.0 as i64, role_id.0 as i64)
+        .next_color(guild_id.get() as i64, role_id.get() as i64)
         .await?;
     if result {
         _ctx.say("OK").await?;
@@ -96,7 +96,7 @@ pub async fn listregs(_ctx: Context<'_>) -> Result<(), Error> {
 
     for (i, d) in data.iter().enumerate() {
         let guild = cache.guild(d.guild as u64).ok_or("no guild name")?;
-        let role = cache.role(guild.id, d.role as u64).ok_or("no role")?;
+        let role = guild.roles.get(&RoleId::new(d.role as u64)).ok_or("no role")?;
 
         mb.push(format!(
             "{}. [{}] [{}] offset:{}\n",
@@ -243,12 +243,15 @@ where
         let role_id = c.role;
         let color = c.color;
 
-        let role = cache.role(guild_id as u64, role_id as u64);
+        let guild: Guild = cache.guild(guild_id as u64).ok_or("no guild name")?.clone();
+        let role = guild.roles.get(&RoleId::new(role_id as u64));
 
         match role {
             Some(role) => {
+                let mut role = role.clone();
                 if role.colour != color {
-                    if let Err(why) = role.edit(_ctx.http(), |r| r.colour(color.0 as u64)).await {
+                    let builder = EditRole::from_role(&role).colour(color.0 as u64);
+                    if let Err(why) = role.edit(_ctx.http(), builder).await {
                         warn!("Cannot edit role {:?}", why);
                     }
                 }

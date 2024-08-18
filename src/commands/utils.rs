@@ -1,12 +1,12 @@
 // use poise::serenity_prelude as serenity;
-use poise::serenity_prelude::{Activity, ActivityType};
+use poise::serenity_prelude::{ActivityData, ActivityType};
 
 #[allow(dead_code)]
-pub fn custom_activity<N>(message: N) -> Activity
+pub fn custom_activity<N>(message: N) -> ActivityData
 where
     N: ToString,
 {
-    let mut act = Activity::playing(message.to_string());
+    let mut act = ActivityData::playing(message.to_string());
     act.kind = ActivityType::Custom;
     act
 }

@@ -1,7 +1,7 @@
 mod commands;
 
 use commands::*;
-use poise::serenity_prelude as serenity;
+use poise::serenity_prelude::{self as serenity, GatewayIntents};
 use sqlx::any::AnyPoolOptions;
 use sqlx::AnyPool;
 use std::convert::From;
@@ -66,7 +66,7 @@ async fn help(
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     match error {
         poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
-        poise::FrameworkError::Command { error, ctx } => {
+        poise::FrameworkError::Command { error, ctx, .. } => {
             println!("Error in command `{}`: {:?}", ctx.command().name, error);
         }
         error => {
@@ -113,7 +113,9 @@ async fn run_bot(config: HashMap<&str, &str>) {
         ],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some("$".into()),
-            edit_tracker: Some(poise::EditTracker::for_timespan(Duration::from_secs(3600))),
+            edit_tracker: Some(Arc::new(poise::EditTracker::for_timespan(
+                Duration::from_secs(3600),
+            ))),
             ..Default::default()
         },
         on_error: |error| Box::pin(on_error(error)),
@@ -122,26 +124,28 @@ async fn run_bot(config: HashMap<&str, &str>) {
                 println!("Executing command {}...", ctx.command().qualified_name);
             })
         },
-        /// This code is run after a command if it was successful (returned Ok)
+        // This code is run after a command if it was successful (returned Ok)
         post_command: |ctx| {
             Box::pin(async move {
                 println!("Executed command {}!", ctx.command().qualified_name);
             })
         },
-        /// Every command invocation must pass this check to continue execution
+        // Every command invocation must pass this check to continue execution
         command_check: Some(|_ctx| Box::pin(async move { Ok(true) })),
         skip_checks_for_owners: false,
         event_handler: |_ctx, event, _framework, _data| {
             Box::pin(async move {
-                println!("Got an event in event handler: {:?}", event.name());
+                println!(
+                    "Got an event in event handler: {:?}",
+                    event.snake_case_name()
+                );
                 Ok(())
             })
         },
         ..Default::default()
     };
 
-    poise::Framework::builder()
-        .token(token)
+    let framework = poise::Framework::builder()
         .setup(move |_ctx, _ready, _framework| {
             Box::pin(async move {
                 let pool = AnyPoolOptions::new()
@@ -157,8 +161,7 @@ async fn run_bot(config: HashMap<&str, &str>) {
                     color_data: color_data.clone(),
                 };
 
-                _ctx.set_activity(serenity::Activity::listening("冬天的聲音"))
-                    .await;
+                _ctx.set_activity(Some(serenity::ActivityData::listening("夏天的蟬鳴")));
 
                 let cachehttp = MyCacheAndHttp::from(_ctx);
 
@@ -173,12 +176,13 @@ async fn run_bot(config: HashMap<&str, &str>) {
             })
         })
         .options(options)
-        .intents(
-            serenity::GatewayIntents::non_privileged() | serenity::GatewayIntents::MESSAGE_CONTENT,
-        )
-        .run()
-        .await
-        .unwrap();
+        .build();
+
+    let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
+    let client = serenity::ClientBuilder::new(token, intents)
+        .framework(framework)
+        .await;
+    client.unwrap().start().await.unwrap();
 }
 
 #[tokio::main]
