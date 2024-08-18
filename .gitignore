@@ -16,3 +16,4 @@ Cargo.lock
 # env file
 .env.sh
 *.db
+.env
