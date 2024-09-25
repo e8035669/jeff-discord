@@ -2,10 +2,12 @@
 name = "jeff-discord"
 version = "0.1.0"
 edition = "2021"
+default-run = "jeff-discord"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "std"] }
 chrono = "0.4"
@@ -15,5 +17,8 @@ lazy_static = "1"
 tokio = { version = "1", features = ["full"]  }
 # serenity = { version = "0.11", features = ["collector"] }
 poise = "0.6"
-sqlx = { version = "0.6", features = ["runtime-tokio-rustls", "postgres", "sqlite", "any"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "sqlite", "any"] }
+openai-api-rs = "5.0.9"
+serde = "1.0.210"
+serde_json = "1.0.128"
 
