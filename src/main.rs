@@ -1,5 +1,5 @@
+use anyhow::{Error, Result};
 use jeff_discord::*;
-
 use poise::serenity_prelude::{self as serenity, GatewayIntents};
 use sqlx::any::AnyPoolOptions;
 use std::convert::From;
@@ -37,7 +37,7 @@ async fn help(
     #[description = "嗨 我是薏仁的機器人"]
     #[autocomplete = "poise::builtins::autocomplete_command"]
     command: Option<String>,
-) -> Result<(), Error> {
+) -> Result<()> {
     poise::builtins::help(
         ctx,
         command.as_deref(),
@@ -67,7 +67,7 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
 }
 
 #[poise::command(prefix_command, hide_in_help)]
-async fn register(ctx: Context<'_>) -> Result<(), Error> {
+async fn register(ctx: Context<'_>) -> Result<()> {
     poise::builtins::register_application_commands_buttons(ctx).await?;
 
     Ok(())

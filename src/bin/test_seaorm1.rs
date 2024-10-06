@@ -2,11 +2,10 @@ use anyhow::{anyhow, Result};
 use jeff_discord::entities::prelude::*;
 use jeff_discord::entities::*;
 use sea_orm::prelude::*;
-use sea_orm::ActiveValue::{NotSet, Set, Unchanged};
-use sea_orm::{Database, EntityOrSelect, EntityTrait, IntoActiveModel, QueryFilter};
+use sea_orm::ActiveValue::Set;
+use sea_orm::{Database, EntityTrait, IntoActiveModel, QueryFilter};
 
-#[tokio::main]
-async fn main() -> Result<()> {
+async fn main1() -> Result<()> {
     let db = Database::connect("sqlite://test_db.sqlite?mode=rwc").await?;
 
     let ret1 = color_random_data::Entity::delete_many().exec(&db).await?;
@@ -44,7 +43,7 @@ async fn main() -> Result<()> {
 
     let d5 = ColorRandomData::find()
         .filter(color_random_data::Column::Guild.eq(1000))
-        .filter(color_random_data::Column::Role.eq(1000))
+        .filter(color_random_data::Column::Role.eq(100))
         .one(&db)
         .await?;
     println!("Find one: {:?}", d5);
@@ -70,3 +69,12 @@ async fn main() -> Result<()> {
     db.close().await?;
     Ok(())
 }
+
+#[tokio::main]
+async fn main() {
+    let ret = main1().await;
+    if let Err(e) = ret {
+        println!("Found Error: {:?}", e);
+    }
+}
+

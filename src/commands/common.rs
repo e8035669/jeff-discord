@@ -1,8 +1,8 @@
 use super::color::ColorRandomData;
+use anyhow::Error;
 use sqlx::AnyPool;
 use std::sync::Arc;
 
-pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Context<'a> = poise::Context<'a, Data, Error>;
 
 #[allow(dead_code)]

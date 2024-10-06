@@ -1,4 +1,6 @@
-use super::common::{Context, Error};
+use super::common::Context;
+use super::error::BotError;
+use anyhow::Result;
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::CreateEmbed;
 use poise::CreateReply;
@@ -8,7 +10,7 @@ pub async fn role_show(
     _ctx: Context<'_>,
     #[description = "guild id"] guild_id: serenity::GuildId,
     #[description = "role id"] role_id: serenity::RoleId,
-) -> Result<(), Error> {
+) -> Result<()> {
     let ret = role_show0(_ctx.clone(), guild_id, role_id).await;
     if let Err(err) = ret {
         _ctx.say(format!("Error {:?}", err)).await?;
@@ -21,9 +23,9 @@ async fn role_show0(
     _ctx: Context<'_>,
     guild_id: serenity::GuildId,
     role_id: serenity::RoleId,
-) -> Result<(), Error> {
+) -> Result<()> {
     let guild = _ctx.http().get_guild(guild_id.into()).await?;
-    let role = guild.roles.get(&role_id).ok_or("Role not found")?;
+    let role = guild.roles.get(&role_id).ok_or(BotError::RoleNotFound)?;
 
     let _m = _ctx
         .send(
@@ -48,9 +50,9 @@ pub async fn role_move(
     #[description = "guild id"] guild_id: serenity::GuildId,
     #[description = "role id"] role_id: serenity::RoleId,
     #[description = "position"] position: u64,
-) -> Result<(), Error> {
+) -> Result<()> {
     let guild = _ctx.http().get_guild(guild_id.into()).await?;
-    let role = guild.roles.get(&role_id).ok_or("Role not found")?;
+    let role = guild.roles.get(&role_id).ok_or(BotError::RoleNotFound)?;
 
     let res = guild.edit_role_position(_ctx, role, position as u16).await;
     match res {

@@ -1,4 +1,6 @@
-use super::common::{Context, Error};
+use super::common::Context;
+use super::error::BotError;
+use anyhow::Result;
 use chrono::prelude::*;
 use colorsys::{Hsl, HslRatio, Rgb};
 use poise::serenity_prelude::{CacheHttp, Colour, EditRole, Guild, MessageBuilder, RoleId};
@@ -12,16 +14,16 @@ use tracing::warn;
 
 /// 註冊一個身份組，將在每天午夜換上新的顏色
 #[poise::command(slash_command, prefix_command, category = "color")]
-pub async fn colorreg(_ctx: Context<'_>, role_id: RoleId) -> Result<(), Error> {
-    let guild_id = _ctx.guild_id().ok_or("message not from guild")?;
+pub async fn colorreg(_ctx: Context<'_>, role_id: RoleId) -> Result<()> {
+    let guild_id = _ctx.guild_id().ok_or(BotError::MessageNotFromGuild)?;
 
     if !_ctx
         .guild()
-        .ok_or_else(|| "Guild not found")?
+        .ok_or(BotError::GuildNotFound)?
         .roles
         .contains_key(&role_id)
     {
-        return Err("Role not belong to this guild".into());
+        return Err(BotError::RoleNotInGuild.into());
     }
 
     let color_data = get_color_data(&_ctx).await;
@@ -42,8 +44,8 @@ pub async fn colorreg(_ctx: Context<'_>, role_id: RoleId) -> Result<(), Error> {
 
 /// 解除註冊身份組，將不會再更換顏色
 #[poise::command(slash_command, prefix_command, category = "color")]
-pub async fn colorunreg(_ctx: Context<'_>, role_id: RoleId) -> Result<(), Error> {
-    let guild_id = _ctx.guild_id().ok_or("message not from guild")?;
+pub async fn colorunreg(_ctx: Context<'_>, role_id: RoleId) -> Result<()> {
+    let guild_id = _ctx.guild_id().ok_or(BotError::MessageNotFromGuild)?;
 
     let color_data = get_color_data(&_ctx).await;
     debug!("unreg_role: {}, {}", guild_id.get(), role_id.get());
@@ -63,8 +65,8 @@ pub async fn colorunreg(_ctx: Context<'_>, role_id: RoleId) -> Result<(), Error>
 
 /// 馬上換新的顏色，可以在顏色不好看的時候使用
 #[poise::command(slash_command, prefix_command, category = "color")]
-pub async fn nextcolor(_ctx: Context<'_>, role_id: RoleId) -> Result<(), Error> {
-    let guild_id = _ctx.guild_id().ok_or("message not from guild")?;
+pub async fn nextcolor(_ctx: Context<'_>, role_id: RoleId) -> Result<()> {
+    let guild_id = _ctx.guild_id().ok_or(BotError::MessageNotFromGuild)?;
 
     let color_data = get_color_data(&_ctx).await;
     debug!("nextcolor: {}, {}", guild_id.get(), role_id.get());
@@ -84,7 +86,7 @@ pub async fn nextcolor(_ctx: Context<'_>, role_id: RoleId) -> Result<(), Error> 
 
 /// 列出已經註冊的身份組
 #[poise::command(slash_command, prefix_command, category = "color")]
-pub async fn listregs(_ctx: Context<'_>) -> Result<(), Error> {
+pub async fn listregs(_ctx: Context<'_>) -> Result<()> {
     let color_data = _ctx.data().color_data.clone();
     let data = color_data.get_reg_list().await?;
 
@@ -94,11 +96,11 @@ pub async fn listregs(_ctx: Context<'_>) -> Result<(), Error> {
     let cache = _ctx.cache();
 
     for (i, d) in data.iter().enumerate() {
-        let guild = cache.guild(d.guild as u64).ok_or("no guild name")?;
+        let guild = cache.guild(d.guild as u64).ok_or(BotError::GuildNotFound)?;
         let role = guild
             .roles
             .get(&RoleId::new(d.role as u64))
-            .ok_or("no role")?;
+            .ok_or(BotError::RoleNotFound)?;
 
         mb.push(format!(
             "{}. [{}] [{}] offset:{}\n",
@@ -232,20 +234,23 @@ async fn get_color_data(_ctx: &Context<'_>) -> Arc<ColorRandomData> {
     _ctx.data().color_data.clone()
 }
 
-async fn update_all_colors<T>(_ctx: &T, color_data: &ColorRandomData) -> Result<(), Error>
+async fn update_all_colors<T>(_ctx: &T, color_data: &ColorRandomData) -> Result<()>
 where
     T: CacheHttp,
 {
     debug!("update all colors");
     let colors = color_data.get_all_colors().await?;
 
-    let cache = _ctx.cache().ok_or("Cannot get cache")?;
+    let cache = _ctx.cache().ok_or(BotError::CacheFail)?;
     for c in colors.iter() {
         let guild_id = c.guild;
         let role_id = c.role;
         let color = c.color;
 
-        let guild: Guild = cache.guild(guild_id as u64).ok_or("no guild name")?.clone();
+        let guild: Guild = cache
+            .guild(guild_id as u64)
+            .ok_or(BotError::GuildNotFound)?
+            .clone();
         let role = guild.roles.get(&RoleId::new(role_id as u64));
 
         match role {
@@ -305,7 +310,7 @@ impl ColorRandomData {
         .expect("Create table failed");
     }
 
-    pub async fn check_exists(&self, guild: i64, role: i64) -> Result<bool, sqlx::Error> {
+    pub async fn check_exists(&self, guild: i64, role: i64) -> Result<bool> {
         let (count,): (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM color_random_data
              WHERE guild=$1 and role=$2",
@@ -318,7 +323,7 @@ impl ColorRandomData {
         Ok(count > 0)
     }
 
-    pub async fn reg_role(&self, guild: i64, role: i64) -> Result<bool, sqlx::Error> {
+    pub async fn reg_role(&self, guild: i64, role: i64) -> Result<bool> {
         if !self.check_exists(guild, role).await? {
             sqlx::query(
                 "INSERT INTO color_random_data
@@ -334,7 +339,7 @@ impl ColorRandomData {
         }
     }
 
-    pub async fn unreg_role(&self, guild: i64, role: i64) -> Result<bool, sqlx::Error> {
+    pub async fn unreg_role(&self, guild: i64, role: i64) -> Result<bool> {
         if self.check_exists(guild, role).await? {
             sqlx::query(
                 "DELETE FROM color_random_data
@@ -350,7 +355,7 @@ impl ColorRandomData {
         }
     }
 
-    pub async fn next_color(&self, guild: i64, role: i64) -> Result<bool, sqlx::Error> {
+    pub async fn next_color(&self, guild: i64, role: i64) -> Result<bool> {
         if self.check_exists(guild, role).await? {
             sqlx::query(
                 "UPDATE color_random_data
@@ -367,7 +372,7 @@ impl ColorRandomData {
         }
     }
 
-    pub async fn get_reg_list(&self) -> Result<Vec<ShiftRecord>, sqlx::Error> {
+    pub async fn get_reg_list(&self) -> Result<Vec<ShiftRecord>> {
         let ret = sqlx::query_as::<_, ShiftRecord>(
             "SELECT guild, role, shift
             FROM color_random_data",
@@ -378,7 +383,7 @@ impl ColorRandomData {
         Ok(ret)
     }
 
-    pub async fn get_all_colors(&self) -> Result<Vec<ColorRecord>, sqlx::Error> {
+    pub async fn get_all_colors(&self) -> Result<Vec<ColorRecord>> {
         let reg_list = self.get_reg_list().await?;
         let mut ret = Vec::new();
         for record in reg_list.iter() {

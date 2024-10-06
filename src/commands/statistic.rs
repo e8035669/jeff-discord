@@ -1,4 +1,6 @@
-use super::common::{Context, Error};
+use super::common::Context;
+use super::error::BotError;
+use anyhow::Result;
 use chrono::{Duration, Utc};
 use lazy_static::lazy_static;
 use poise::serenity_prelude::{
@@ -17,10 +19,10 @@ use tracing::debug;
 pub async fn emojistat(
     _ctx: Context<'_>,
     #[description = "More days"] ndays: Option<i64>,
-) -> Result<(), Error> {
+) -> Result<()> {
     let _is_typing = _ctx.defer_or_broadcast().await?;
 
-    let _guild: Guild = _ctx.guild().ok_or("Guild not found in cache")?.clone();
+    let _guild: Guild = _ctx.guild().ok_or(BotError::GuildNotFound)?.clone();
 
     let guild_emoji = _guild.emojis.clone();
 
@@ -330,7 +332,7 @@ async fn query_messages(
     _ctx: &Context<'_>,
     _ch: &GuildChannel,
     _after: Timestamp,
-) -> Result<HashMap<MessageId, Message>, Error> {
+) -> Result<HashMap<MessageId, Message>> {
     let mut ret = HashMap::new();
     let mut last_msg_id: Option<MessageId> = None;
     let mut is_enough = false;

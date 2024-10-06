@@ -1,4 +1,5 @@
-use super::common::{Context, Error};
+use super::common::Context;
+use anyhow::Result;
 use poise::serenity_prelude::{self as serenity, ChannelId};
 use tracing::warn;
 
@@ -8,7 +9,7 @@ pub async fn botsend(
     ctx: Context<'_>,
     #[description = "Channel id"] channel_id: u64,
     #[description = "Message to send"] message: String,
-) -> Result<(), Error> {
+) -> Result<()> {
     let channel = ctx
         .serenity_context()
         .http
@@ -24,7 +25,7 @@ pub async fn botsend(
 
 /// 跟機器人問早
 #[poise::command(prefix_command, slash_command, category = "talking")]
-pub async fn ping(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn ping(ctx: Context<'_>) -> Result<()> {
     let response = serenity::MessageBuilder::new()
         .push("Hello ")
         .mention(ctx.author())
