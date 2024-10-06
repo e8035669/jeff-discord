@@ -1,22 +1,11 @@
-mod commands;
+use jeff_discord::*;
 
-use commands::*;
 use poise::serenity_prelude::{self as serenity, GatewayIntents};
 use sqlx::any::AnyPoolOptions;
-use sqlx::AnyPool;
 use std::convert::From;
 use std::time::Duration;
 use std::{collections::HashMap, env, sync::Arc};
 use tracing_subscriber::filter::LevelFilter;
-
-type Error = Box<dyn std::error::Error + Send + Sync>;
-type Context<'a> = poise::Context<'a, Data, Error>;
-
-#[allow(dead_code)]
-pub struct Data {
-    pool: AnyPool,
-    color_data: Arc<ColorRandomData>,
-}
 
 struct MyCacheAndHttp {
     cache: Arc<serenity::Cache>,

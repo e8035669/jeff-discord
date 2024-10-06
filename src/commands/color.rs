@@ -1,7 +1,7 @@
-use crate::{Context, Error};
+use super::common::{Context, Error};
 use chrono::prelude::*;
 use colorsys::{Hsl, HslRatio, Rgb};
-use poise::serenity_prelude::{CacheHttp, Colour, MessageBuilder, RoleId, EditRole, Guild};
+use poise::serenity_prelude::{CacheHttp, Colour, EditRole, Guild, MessageBuilder, RoleId};
 use sqlx::{Any, Pool};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -9,7 +9,6 @@ use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 use tracing::debug;
 use tracing::warn;
-
 
 /// 註冊一個身份組，將在每天午夜換上新的顏色
 #[poise::command(slash_command, prefix_command, category = "color")]
@@ -96,7 +95,10 @@ pub async fn listregs(_ctx: Context<'_>) -> Result<(), Error> {
 
     for (i, d) in data.iter().enumerate() {
         let guild = cache.guild(d.guild as u64).ok_or("no guild name")?;
-        let role = guild.roles.get(&RoleId::new(d.role as u64)).ok_or("no role")?;
+        let role = guild
+            .roles
+            .get(&RoleId::new(d.role as u64))
+            .ok_or("no role")?;
 
         mb.push(format!(
             "{}. [{}] [{}] offset:{}\n",
