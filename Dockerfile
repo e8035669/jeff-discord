@@ -9,7 +9,7 @@ RUN cargo build --release
 RUN musl-strip target/armv7-unknown-linux-musleabihf/release/jeff-discord
 
 # FROM alpine:latest
-FROM scratch
+FROM --platform=linux/arm/v7 scratch
 # RUN apk --no-cache add ca-certificates
 COPY --from=builder \
     /home/rust/src/target/armv7-unknown-linux-musleabihf/release/jeff-discord \
