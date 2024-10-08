@@ -1,12 +1,12 @@
-use super::color::ColorRandomData;
+use super::color::ColorRandom;
 use anyhow::Error;
-use sqlx::AnyPool;
+use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 
 pub type Context<'a> = poise::Context<'a, Data, Error>;
 
 #[allow(dead_code)]
 pub struct Data {
-    pub pool: AnyPool,
-    pub color_data: Arc<ColorRandomData>,
+    pub pool: DatabaseConnection,
+    pub color_data: Arc<ColorRandom>,
 }

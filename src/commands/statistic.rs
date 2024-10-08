@@ -90,7 +90,7 @@ pub async fn emojistat(
         messages.push(format!("{}: {}", e2, c));
     }
 
-    let sorted_count_chunks = counts.chunks(1).collect::<Vec<_>>();
+    let sorted_count_chunks = counts.chunks(10).collect::<Vec<_>>();
 
     let mut current_page: isize = 0;
 

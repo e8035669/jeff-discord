@@ -1,7 +1,8 @@
 use anyhow::{Error, Result};
 use jeff_discord::*;
+use migration::{Migrator, MigratorTrait};
 use poise::serenity_prelude::{self as serenity, GatewayIntents};
-use sqlx::any::AnyPoolOptions;
+use sea_orm::Database;
 use std::convert::From;
 use std::time::Duration;
 use std::{collections::HashMap, env, sync::Arc};
@@ -137,14 +138,10 @@ async fn run_bot(config: HashMap<&str, &str>) {
     let framework = poise::Framework::builder()
         .setup(move |_ctx, _ready, _framework| {
             Box::pin(async move {
-                let pool = AnyPoolOptions::new()
-                    .max_connections(5)
-                    .connect(database_url.as_str())
-                    .await
-                    .expect("Cannot connect to db");
+                let pool = Database::connect(database_url.as_str()).await?;
+                Migrator::up(&pool, None).await?;
 
-                let color_data = Arc::new(ColorRandomData::new(pool.clone()));
-                color_data.init().await;
+                let color_data = Arc::new(ColorRandom::new(pool.clone()));
                 let data = Data {
                     pool,
                     color_data: color_data.clone(),
@@ -155,8 +152,8 @@ async fn run_bot(config: HashMap<&str, &str>) {
                 let cachehttp = MyCacheAndHttp::from(_ctx);
 
                 tokio::spawn(async move {
-                    let color_data = Arc::from(&color_data);
-                    color_data.update_loop(&cachehttp).await;
+                    let color_data = color_data;
+                    update_loop(&cachehttp, &color_data).await;
                 });
 
                 poise::builtins::register_globally(_ctx, &_framework.options().commands).await?;

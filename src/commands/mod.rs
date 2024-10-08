@@ -1,14 +1,14 @@
-pub mod talking;
 pub mod color;
-pub mod utils;
-pub mod statistic;
-pub mod role;
 pub mod common;
 pub mod error;
+pub mod role;
+pub mod statistic;
+pub mod talking;
+pub mod utils;
 
-pub use talking::*;
 pub use color::*;
-pub use statistic::*;
-pub use role::*;
 pub use common::*;
 pub use error::*;
+pub use role::*;
+pub use statistic::*;
+pub use talking::*;
