@@ -1,6 +1,6 @@
 ARG BASE_IMAGE=messense/rust-musl-cross:armv7-musleabihf
 
-FROM ${BASE_IMAGE} AS builder
+FROM --platform=$BUILDPLATFORM ${BASE_IMAGE} AS builder
 ADD Cargo.toml ./Cargo.toml
 ADD Cargo.lock ./Cargo.lock
 ADD src ./src
