@@ -16,4 +16,7 @@ pub enum BotError {
 
     #[error("Cannot get cache")]
     CacheFail,
+
+    #[error("Parent channel not found")]
+    ParentChannelNotFound,
 }

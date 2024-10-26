@@ -1,6 +1,16 @@
-use super::common::Context;
-use anyhow::Result;
-use poise::serenity_prelude::{self as serenity, ChannelId};
+use std::time::Instant;
+
+use super::{common::Context, BotError, Data};
+use anyhow::{Error, Result};
+use async_openai::types::{
+    ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestUserMessageArgs,
+    CreateChatCompletionRequestArgs,
+};
+use poise::serenity_prelude::{
+    self as serenity, ChannelId, ChannelType, Color, CreateEmbed, CreateEmbedFooter, CreateThread,
+    FullEvent, GetMessages, Message,
+};
+use poise::{CreateReply, FrameworkContext};
 use tracing::warn;
 
 /// 讓機器人去某個頻道說話
@@ -37,38 +47,148 @@ pub async fn ping(ctx: Context<'_>) -> Result<()> {
     Ok(())
 }
 
-/*
-/// 操控機器人說話的指令
-#[group]
-#[commands(botsend, ping)]
-struct Talking;
+static SYSTEM_PROMPT: &str = r#"
+You are Gemma AI, a friendly AI Assistant.
+Respond to the input as a friendly AI assistant, generating human-like text, and follow the instructions in the input if applicable.
+Keep the response concise and engaging, using Markdown when appropriate.
+The user live in Taiwan, so be aware of the local context and preferences.
+Use a conversational tone and provide helpful and informative responses, utilizing external knowledge when necessary.
+"#;
 
-/// 讓機器人去某個頻道說話
-#[command]
-#[owners_only]
-#[usage = "<channel_id> <messages>..."]
-async fn botsend(ctx: &Context, _msg: &Message, mut args: Args) -> CommandResult {
-    let channel_id = args.single::<u64>()?;
-    let message = args.remains().ok_or("Empty message")?;
-    let channel = ctx.http.get_channel(channel_id).await?;
+/// 向機器人提問
+#[poise::command(prefix_command, slash_command, category = "talking", owners_only)]
+pub async fn write(ctx: Context<'_>, prompt: String) -> Result<()> {
+    ctx.defer().await?;
 
-    if let Err(why) = channel.id().say(&ctx.http, message).await {
-        println!("Error sending message: {:?}", why);
+    let t1 = Instant::now();
+
+    let request = CreateChatCompletionRequestArgs::default()
+        .model("gpt")
+        .messages([
+            ChatCompletionRequestAssistantMessageArgs::default()
+                .content(SYSTEM_PROMPT.to_string().trim())
+                .build()?
+                .into(),
+            ChatCompletionRequestUserMessageArgs::default()
+                .content(prompt.clone())
+                .build()?
+                .into(),
+        ])
+        .build()?;
+
+    let data = ctx.data();
+
+    let response = data.openai.chat().create(request).await?;
+
+    let mut resp_msg = String::new();
+
+    for choice in &response.choices {
+        let index = choice.index;
+        let role = choice.message.role;
+        let content = &choice.message.content;
+        println!("{}: Role: {} Content: {:?}", index, role, content);
+
+        if let Some(s) = content {
+            resp_msg.push_str(s.as_str());
+        }
     }
+
+    let bot_resp = CreateReply::default().embed(
+        CreateEmbed::default()
+            .title(format!("> {}", prompt))
+            // .description(format!("```text\n{}\n```\n", resp_msg)),
+            .description(format!("{}\n", resp_msg))
+            .color(Color::BLUE)
+            .footer(CreateEmbedFooter::new(format!(
+                "Process time: {:.2}s",
+                t1.elapsed().as_secs_f32()
+            ))),
+    );
+    ctx.send(bot_resp).await?;
     Ok(())
 }
 
-/// 跟機器人問早
-#[command]
-async fn ping(_ctx: &Context, msg: &Message) -> CommandResult {
-    let response = MessageBuilder::new()
-        .push("Hello ")
-        .mention(&msg.author)
-        .build();
-    if let Err(why) = msg.channel_id.say(&_ctx.http, response).await {
-        warn!("Error sending message: {:?}", why);
+/// 開始跟機器人聊天
+#[poise::command(
+    prefix_command,
+    slash_command,
+    category = "talking",
+    guild_only,
+    owners_only
+)]
+pub async fn chat(ctx: Context<'_>, msg: String) -> Result<()> {
+    let channel = ctx
+        .guild_channel()
+        .await
+        .ok_or(BotError::MessageNotFromGuild)?;
+    let reply = ctx.reply(format!("Message id is: {}", ctx.id())).await?;
+    let new_thread = channel
+        .create_thread_from_message(
+            &ctx,
+            reply.message().await?.id,
+            CreateThread::new(msg.clone()),
+        )
+        .await?;
+    new_thread.say(&ctx, "Hello~").await?;
+    Ok(())
+}
+
+pub async fn handle_message(
+    ctx: &serenity::Context,
+    _event: &FullEvent,
+    framework: FrameworkContext<'_, Data, Error>,
+    _data: &Data,
+    message: &Message,
+) -> Result<()> {
+    if message.author.bot {
+        return Ok(());
     }
+
+    let channel = message.channel_id.to_channel(ctx).await?;
+    let thread_channel = match channel.guild() {
+        Some(c) => c,
+        None => return Ok(()),
+    };
+
+    match thread_channel.kind {
+        ChannelType::PrivateThread | ChannelType::PublicThread => {}
+        _ => return Ok(()),
+    }
+
+    match thread_channel.owner_id {
+        Some(i) => {
+            if i != framework.bot_id {
+                return Ok(());
+            }
+        }
+        None => return Ok(()),
+    }
+
+    let guild_channel_id = thread_channel
+        .parent_id
+        .ok_or(BotError::ParentChannelNotFound)?;
+
+    let start_message = guild_channel_id
+        .message(ctx, thread_channel.id.get())
+        .await?;
+
+    println!("Message: {:?}", message);
+    println!("guild_channel: {:?}", thread_channel);
+    println!("Start message: {:?}", start_message);
+
+    let mut history = thread_channel.messages(ctx, GetMessages::default()).await?;
+
+    history.sort_by(|m1, m2| m1.timestamp.cmp(&m2.timestamp));
+
+    for m in &history {
+        let content = m.content.clone();
+        let author = m.author.name.clone();
+        println!("{} says: {}", author, content);
+    }
+
+    // if let Some(m) = history.first() {
+    //     println!("First message: {:?}", m);
+    // }
 
     Ok(())
 }
-*/

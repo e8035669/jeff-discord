@@ -1,11 +1,15 @@
 use anyhow::{Error, Result};
+use async_openai::config::OpenAIConfig;
+use async_openai::Client;
 use jeff_discord::*;
 use migration::{Migrator, MigratorTrait};
-use poise::serenity_prelude::{self as serenity, GatewayIntents};
+use poise::serenity_prelude::{self as serenity, FullEvent, GatewayIntents};
+use poise::FrameworkContext;
 use sea_orm::Database;
 use std::convert::From;
 use std::time::Duration;
 use std::{collections::HashMap, env, sync::Arc};
+use tracing::{error, warn};
 use tracing_subscriber::filter::LevelFilter;
 
 struct MyCacheAndHttp {
@@ -57,14 +61,57 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     match error {
         poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
         poise::FrameworkError::Command { error, ctx, .. } => {
-            println!("Error in command `{}`: {:?}", ctx.command().name, error);
+            warn!("Error in command `{}`: {:?}", ctx.command().name, error);
+            let ret = ctx.reply(format!("Command `{}` execution error", ctx.command().name)).await;
+            if let Err(e) = ret {
+                warn!("Error while sending error reply {:?}", e);
+            }
         }
         error => {
             if let Err(e) = poise::builtins::on_error(error).await {
-                println!("Error while handling error: {}", e);
+                warn!("Error while handling error: {}", e);
             }
         }
     }
+}
+
+async fn on_event(
+    ctx: &serenity::Context,
+    event: &FullEvent,
+    framework: FrameworkContext<'_, Data, Error>,
+    data: &Data,
+) -> Result<()> {
+    println!(
+        "Got an event in event handler: {:?}",
+        event.snake_case_name()
+    );
+    match event {
+        FullEvent::Message { .. } => on_message(ctx, event, framework, data).await?,
+        _ => {}
+    }
+
+    Ok(())
+}
+
+async fn on_message(
+    ctx: &serenity::Context,
+    event: &FullEvent,
+    framework: FrameworkContext<'_, Data, Error>,
+    data: &Data,
+) -> Result<()> {
+    let message = match event {
+        FullEvent::Message { new_message } => Ok(new_message),
+        _ => Err(BotError::MessageNotFromGuild),
+    }?;
+
+    let handlers = vec![handle_message];
+    for h in &handlers {
+        if let Err(e) = h(ctx, event, framework, data, message).await {
+            error!("Handle on_message error {:?}", e);
+        }
+    }
+
+    Ok(())
 }
 
 #[poise::command(prefix_command, hide_in_help)]
@@ -100,6 +147,8 @@ async fn run_bot(config: HashMap<&str, &str>) {
             emojistat(),
             role_move(),
             role_show(),
+            chat(),
+            write(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some("$".into()),
@@ -123,14 +172,8 @@ async fn run_bot(config: HashMap<&str, &str>) {
         // Every command invocation must pass this check to continue execution
         command_check: Some(|_ctx| Box::pin(async move { Ok(true) })),
         skip_checks_for_owners: false,
-        event_handler: |_ctx, event, _framework, _data| {
-            Box::pin(async move {
-                println!(
-                    "Got an event in event handler: {:?}",
-                    event.snake_case_name()
-                );
-                Ok(())
-            })
+        event_handler: |ctx, event, framework, data| {
+            Box::pin(on_event(ctx, event, framework, data))
         },
         ..Default::default()
     };
@@ -142,9 +185,15 @@ async fn run_bot(config: HashMap<&str, &str>) {
                 Migrator::up(&pool, None).await?;
 
                 let color_data = Arc::new(ColorRandom::new(pool.clone()));
+                let openai_client = Client::with_config(
+                    OpenAIConfig::new()
+                        .with_api_base("http://192.168.17.20:8000/v1")
+                        .with_api_key("EMPTY"),
+                );
                 let data = Data {
                     pool,
                     color_data: color_data.clone(),
+                    openai: openai_client,
                 };
 
                 _ctx.set_activity(Some(serenity::ActivityData::listening("夏天的蟬鳴")));
