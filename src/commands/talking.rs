@@ -1,7 +1,6 @@
-use std::time::Instant;
-
+use super::admin::get_pref_model;
 use super::{common::Context, BotError, Data};
-use anyhow::{Error, Result};
+use anyhow::{anyhow, Error, Result};
 use async_openai::types::{
     ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestUserMessageArgs,
     CreateChatCompletionRequestArgs,
@@ -11,6 +10,9 @@ use poise::serenity_prelude::{
     FullEvent, GetMessages, Message,
 };
 use poise::{CreateReply, FrameworkContext};
+use rand::seq::IteratorRandom;
+use sea_orm::{EnumIter, Iterable};
+use std::time::Instant;
 use tracing::warn;
 
 /// 讓機器人去某個頻道說話
@@ -62,11 +64,16 @@ pub async fn write(ctx: Context<'_>, prompt: String) -> Result<()> {
 
     let t1 = Instant::now();
 
+    let pref = get_pref_model(&ctx.data().pool).await?;
+    let system_prompt = pref
+        .write_system_prompt
+        .unwrap_or_else(|| SYSTEM_PROMPT.to_string());
+
     let request = CreateChatCompletionRequestArgs::default()
         .model("gpt")
         .messages([
             ChatCompletionRequestAssistantMessageArgs::default()
-                .content(SYSTEM_PROMPT.to_string().trim())
+                .content(system_prompt)
                 .build()?
                 .into(),
             ChatCompletionRequestUserMessageArgs::default()
@@ -190,5 +197,53 @@ pub async fn handle_message(
     //     println!("First message: {:?}", m);
     // }
 
+    Ok(())
+}
+
+#[derive(Debug, poise::ChoiceParameter, EnumIter, Clone, Copy, PartialEq, Eq)]
+pub enum Rps {
+    #[name = "布"]
+    Paper = 0,
+    #[name = "剪刀"]
+    Scissors = 1,
+    #[name = "石頭"]
+    Stone = 2,
+}
+
+impl Rps {
+    fn to_name(&self) -> String {
+        match self {
+            Rps::Paper => String::from("布"),
+            Rps::Scissors => String::from("剪刀"),
+            Rps::Stone => String::from("石頭"),
+        }
+    }
+}
+
+/// 跟機器人玩猜拳
+#[poise::command(prefix_command, slash_command, category = "talking")]
+pub async fn paper_scissors_stone(ctx: Context<'_>, shoot: Rps) -> Result<()> {
+    ctx.defer().await?;
+
+    let mine = Rps::iter()
+        .choose(&mut rand::thread_rng())
+        .ok_or(anyhow!("random error"))?;
+
+    let i = (mine as i32 - shoot as i32 + 3) % 3;
+    let mut message = String::new();
+    message.push_str(format!("我出的是... {}!\n", mine.to_name()).as_str());
+    match i {
+        0 => {
+            message.push_str("平手!");
+        }
+        1 => {
+            message.push_str("你輸了!");
+        }
+        2 => {
+            message.push_str("你贏了!");
+        }
+        _ => {}
+    }
+    ctx.reply(message).await?;
     Ok(())
 }

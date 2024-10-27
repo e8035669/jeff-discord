@@ -9,7 +9,7 @@ use sea_orm::Database;
 use std::convert::From;
 use std::time::Duration;
 use std::{collections::HashMap, env, sync::Arc};
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 use tracing_subscriber::filter::LevelFilter;
 
 struct MyCacheAndHttp {
@@ -62,7 +62,9 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
         poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
         poise::FrameworkError::Command { error, ctx, .. } => {
             warn!("Error in command `{}`: {:?}", ctx.command().name, error);
-            let ret = ctx.reply(format!("Command `{}` execution error", ctx.command().name)).await;
+            let ret = ctx
+                .reply(format!("Command `{}` execution error", ctx.command().name))
+                .await;
             if let Err(e) = ret {
                 warn!("Error while sending error reply {:?}", e);
             }
@@ -149,6 +151,10 @@ async fn run_bot(config: HashMap<&str, &str>) {
             role_show(),
             chat(),
             write(),
+            set_activity(),
+            paper_scissors_stone(),
+            set_write_system_prompt(),
+            get_write_system_prompt(),
         ],
         prefix_options: poise::PrefixFrameworkOptions {
             prefix: Some("$".into()),
@@ -182,7 +188,11 @@ async fn run_bot(config: HashMap<&str, &str>) {
         .setup(move |_ctx, _ready, _framework| {
             Box::pin(async move {
                 let pool = Database::connect(database_url.as_str()).await?;
+                info!("Database connected {}", database_url.as_str());
                 Migrator::up(&pool, None).await?;
+                info!("Database migration success");
+                let pref = get_pref_model(&pool).await?;
+                info!("Get GlobalPref from database: {:?}", pref);
 
                 let color_data = Arc::new(ColorRandom::new(pool.clone()));
                 let openai_client = Client::with_config(
@@ -190,13 +200,20 @@ async fn run_bot(config: HashMap<&str, &str>) {
                         .with_api_base("http://192.168.17.20:8000/v1")
                         .with_api_key("EMPTY"),
                 );
+
                 let data = Data {
                     pool,
                     color_data: color_data.clone(),
                     openai: openai_client,
                 };
 
-                _ctx.set_activity(Some(serenity::ActivityData::listening("夏天的蟬鳴")));
+                // _ctx.set_activity(Some(serenity::ActivityData::listening("夏天的蟬鳴")));
+                let activ_ret = set_activity_from_db(_ctx, &pref).await;
+                if let Err(e) = activ_ret {
+                    warn!("Error on set activity: {}", e);
+                } else {
+                    info!("Restore activity success");
+                }
 
                 let cachehttp = MyCacheAndHttp::from(_ctx);
 

@@ -5,6 +5,7 @@ pub mod role;
 pub mod statistic;
 pub mod talking;
 pub mod utils;
+pub mod admin;
 
 pub use color::*;
 pub use common::*;
@@ -12,3 +13,4 @@ pub use error::*;
 pub use role::*;
 pub use statistic::*;
 pub use talking::*;
+pub use admin::*;

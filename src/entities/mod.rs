@@ -3,3 +3,4 @@
 pub mod prelude;
 
 pub mod color_random_data;
+pub mod global_pref;
