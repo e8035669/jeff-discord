@@ -2,7 +2,8 @@ use super::admin::get_pref_model;
 use super::{common::Context, BotError, Data};
 use anyhow::{anyhow, Error, Result};
 use async_openai::types::{
-    ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestUserMessageArgs,
+    ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage,
+    ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs,
     CreateChatCompletionRequestArgs,
 };
 use poise::serenity_prelude::{
@@ -64,7 +65,9 @@ pub async fn write(ctx: Context<'_>, prompt: String) -> Result<()> {
 
     let t1 = Instant::now();
 
-    let pref = get_pref_model(&ctx.data().pool).await?;
+    let data = ctx.data();
+
+    let pref = get_pref_model(&data.pool).await?;
     let system_prompt = pref
         .write_system_prompt
         .unwrap_or_else(|| SYSTEM_PROMPT.to_string());
@@ -72,7 +75,7 @@ pub async fn write(ctx: Context<'_>, prompt: String) -> Result<()> {
     let request = CreateChatCompletionRequestArgs::default()
         .model("gpt")
         .messages([
-            ChatCompletionRequestAssistantMessageArgs::default()
+            ChatCompletionRequestSystemMessageArgs::default()
                 .content(system_prompt)
                 .build()?
                 .into(),
@@ -82,8 +85,6 @@ pub async fn write(ctx: Context<'_>, prompt: String) -> Result<()> {
                 .into(),
         ])
         .build()?;
-
-    let data = ctx.data();
 
     let response = data.openai.chat().create(request).await?;
 
@@ -123,22 +124,23 @@ pub async fn write(ctx: Context<'_>, prompt: String) -> Result<()> {
     guild_only,
     owners_only
 )]
-pub async fn chat(ctx: Context<'_>, msg: String) -> Result<()> {
+pub async fn chat(ctx: Context<'_>) -> Result<()> {
     let channel = ctx
         .guild_channel()
         .await
         .ok_or(BotError::MessageNotFromGuild)?;
-    let reply = ctx.reply(format!("Message id is: {}", ctx.id())).await?;
-    let new_thread = channel
+    let reply = ctx.reply("New chat created.").await?;
+    let _new_thread = channel
         .create_thread_from_message(
             &ctx,
             reply.message().await?.id,
-            CreateThread::new(msg.clone()),
+            CreateThread::new("New chat room"),
         )
         .await?;
-    new_thread.say(&ctx, "Hello~").await?;
     Ok(())
 }
+
+pub async fn handle_chat_message() {}
 
 pub async fn handle_message(
     ctx: &serenity::Context,
@@ -179,9 +181,21 @@ pub async fn handle_message(
         .message(ctx, thread_channel.id.get())
         .await?;
 
-    println!("Message: {:?}", message);
-    println!("guild_channel: {:?}", thread_channel);
-    println!("Start message: {:?}", start_message);
+    if let Some(b) = &start_message.interaction {
+        if b.name == "chat" {
+            println!("Need handle chat message");
+        } else {
+            return Ok(());
+        }
+    } else {
+        return Ok(());
+    }
+
+    // println!("Message: {:?}", message);
+    // println!("guild_channel: {:?}", thread_channel);
+    // println!("Start message: {:?}", start_message);
+
+    let _typing = thread_channel.start_typing(&ctx.http);
 
     let mut history = thread_channel.messages(ctx, GetMessages::default()).await?;
 
@@ -193,9 +207,42 @@ pub async fn handle_message(
         println!("{} says: {}", author, content);
     }
 
-    // if let Some(m) = history.first() {
-    //     println!("First message: {:?}", m);
-    // }
+    let mut messages: Vec<ChatCompletionRequestMessage> = Vec::new();
+
+    for m in &history {
+        if m.author.id == framework.bot_id {
+            let msg = ChatCompletionRequestAssistantMessageArgs::default()
+                .content(m.content.clone())
+                .build()?;
+            messages.push(msg.into());
+        } else {
+            let msg = ChatCompletionRequestUserMessageArgs::default()
+                .content(m.content.clone())
+                .build()?;
+            messages.push(msg.into());
+        }
+    }
+
+    let request = CreateChatCompletionRequestArgs::default()
+        .model("gpt")
+        .messages(messages)
+        .build()?;
+
+    let response = _data.openai.chat().create(request).await?;
+    let mut resp_msg = String::new();
+
+    for choice in &response.choices {
+        let index = choice.index;
+        let role = choice.message.role;
+        let content = &choice.message.content;
+        println!("{}: Role: {} Content: {:?}", index, role, content);
+
+        if let Some(s) = content {
+            resp_msg.push_str(s.as_str());
+        }
+    }
+
+    thread_channel.say(ctx, resp_msg).await?;
 
     Ok(())
 }

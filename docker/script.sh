@@ -12,7 +12,7 @@
 
 # docker run -it --rm -v ${PWD}/data:/data -p 8000:80 --ipc host --init ghcr.io/ericlbuehler/mistral.rs:cpu-0.3.1 -i  plain -m EricB/gemma-2-2b-it-UQFF --from-uqff gemma2-2b-instruct-q8_0.uqff
 
-docker run -it --rm -v ${PWD}/data:/data -p 8000:80 --ipc host --init ghcr.io/ggerganov/llama.cpp:full -s -m /data/gemma-2-2b-it-GGUF/ggml-model-Q8_0.gguf --host 0.0.0.0 --port 80
+docker run -it --rm -v ${PWD}/data:/data -p 8000:80 --ipc host --init --gpus all ghcr.io/e8035669/llama.cpp:full-cuda -s -m /data/gemma-2-2b-it-GGUF/ggml-model-Q8_0.gguf --host 0.0.0.0 --port 80 --n-gpu-layers 25 -t 8
 # docker run -it --rm -v ${PWD}/data:/data -p 8000:80 --ipc host --init ghcr.io/ggerganov/llama.cpp:full -s -m /data/gemma-2-2b-it-GGUF/ggml-model-Q4_K.gguf --host 0.0.0.0 --port 80
 
 
