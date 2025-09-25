@@ -9,12 +9,12 @@ use futures::StreamExt;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let config = OpenAIConfig::new()
-        .with_api_base("http://localhost:8000/v1")
+        .with_api_base("http://localhost:11434/v1")
         .with_api_key("EMPTY");
     let client = Client::with_config(config);
 
     let request = CreateChatCompletionRequestArgs::default()
-        .model("gpt-3.5-turbo")
+        .model("gemma")
         // .max_tokens(512u32)
         .messages([ChatCompletionRequestUserMessageArgs::default()
             .content("Write a marketing blog praising and introducing Rust library async-openai in Chinese")

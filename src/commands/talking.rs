@@ -1,20 +1,24 @@
 use super::admin::get_pref_model;
 use super::{common::Context, BotError, Data};
 use anyhow::{anyhow, Error, Result};
+use async_openai::error::OpenAIError;
 use async_openai::types::{
     ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage,
     ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs,
-    CreateChatCompletionRequestArgs,
+    ChatCompletionTool, ChatCompletionToolArgs, ChatCompletionToolType,
+    CreateChatCompletionRequestArgs, FunctionObject, FunctionObjectArgs,
 };
+use chrono::Utc;
 use poise::serenity_prelude::{
     self as serenity, ChannelId, ChannelType, Color, CreateEmbed, CreateEmbedFooter, CreateThread,
-    FullEvent, GetMessages, Message,
+    EditChannel, FullEvent, GetMessages, GuildChannel, Message,
 };
 use poise::{CreateReply, FrameworkContext};
 use rand::seq::IteratorRandom;
 use sea_orm::{EnumIter, Iterable};
+use serde_json::json;
 use std::time::Instant;
-use tracing::warn;
+use tracing::{info, warn};
 
 /// 讓機器人去某個頻道說話
 #[poise::command(prefix_command, slash_command, category = "talking", owners_only)]
@@ -116,6 +120,8 @@ pub async fn write(ctx: Context<'_>, prompt: String) -> Result<()> {
     Ok(())
 }
 
+static DEFAULT_THREAD_NAME: &str = "New chat room";
+
 /// 開始跟機器人聊天
 #[poise::command(
     prefix_command,
@@ -134,19 +140,135 @@ pub async fn chat(ctx: Context<'_>) -> Result<()> {
         .create_thread_from_message(
             &ctx,
             reply.message().await?.id,
-            CreateThread::new("New chat room"),
+            CreateThread::new(DEFAULT_THREAD_NAME),
         )
         .await?;
     Ok(())
 }
 
-pub async fn handle_chat_message() {}
+static TITLE_PROMPT_TEMPLATE: &str = r#"Create a concise, 3-5 word title with an emoji as a title for the chat history, in the given language. Suitable Emojis for the summary can be used to enhance understanding but avoid quotation marks or special formatting. RESPOND ONLY WITH THE TITLE TEXT.
+
+Examples of titles:
+📉 Stock Market Trends
+🍪 Perfect Chocolate Chip Recipe
+Evolution of Music Streaming
+Remote Work Productivity Tips
+Artificial Intelligence in Healthcare
+🎮 Video Game Development Insights
+
+<chat_history>
+{messages}
+</chat_history>"#;
+
+pub async fn handle_chat_message(
+    ctx: &serenity::Context,
+    framework: FrameworkContext<'_, Data, Error>,
+    data: &Data,
+    thread_channel: &GuildChannel,
+) -> Result<()> {
+    let _typing = thread_channel.start_typing(&ctx.http);
+
+    let mut history = thread_channel.messages(ctx, GetMessages::default()).await?;
+
+    history.sort_by(|m1, m2| m1.timestamp.cmp(&m2.timestamp));
+
+    for m in &history {
+        let content = m.content.clone();
+        let author = m.author.name.clone();
+        println!("{} says: {}", author, content);
+    }
+
+    let mut messages: Vec<ChatCompletionRequestMessage> = Vec::new();
+
+    for m in &history {
+        if m.content.len() == 0 {
+            continue;
+        }
+        if m.author.id == framework.bot_id {
+            let msg = ChatCompletionRequestAssistantMessageArgs::default()
+                .content(m.content.clone())
+                .build()?;
+            messages.push(msg.into());
+        } else {
+            let msg = ChatCompletionRequestUserMessageArgs::default()
+                .content(m.content.clone())
+                .build()?;
+            messages.push(msg.into());
+        }
+    }
+
+    let request = CreateChatCompletionRequestArgs::default()
+        .model("gpt")
+        .messages(messages)
+        .build()?;
+
+    let response = data.openai.chat().create(request).await?;
+    let mut resp_msg = String::new();
+
+    for choice in &response.choices {
+        let index = choice.index;
+        let role = choice.message.role;
+        let content = &choice.message.content;
+        println!("{}: Role: {} Content: {:?}", index, role, content);
+
+        if let Some(s) = content {
+            resp_msg.push_str(s.as_str());
+        }
+    }
+
+    thread_channel.say(ctx, resp_msg).await?;
+
+    if thread_channel.name() == DEFAULT_THREAD_NAME {
+        let mut msg = String::new();
+        for m in &history {
+            if m.content.len() > 0 {
+                msg.push_str(&m.content);
+            }
+        }
+
+        let title_request = CreateChatCompletionRequestArgs::default()
+            .model("gpt")
+            .messages([ChatCompletionRequestUserMessageArgs::default()
+                .content(format!(r#"Create a concise, 3-5 word title with an emoji as a title for the chat history, in the given language. Suitable Emojis for the summary can be used to enhance understanding but avoid quotation marks or special formatting. RESPOND ONLY WITH THE TITLE TEXT.
+
+Examples of titles:
+📉 Stock Market Trends
+🍪 Perfect Chocolate Chip Recipe
+Evolution of Music Streaming
+Remote Work Productivity Tips
+Artificial Intelligence in Healthcare
+🎮 Video Game Development Insights
+
+<chat_history>
+{}
+</chat_history>"#, msg))
+                .build()?
+                .into()])
+            .build()?;
+
+        let title_resp = data.openai.chat().create(title_request).await?;
+        let mut new_title = String::new();
+        for c in &title_resp.choices {
+            if let Some(c) = &c.message.content {
+                new_title.push_str(c);
+            }
+        }
+
+        let mut thread_channel = thread_channel.clone();
+        thread_channel
+            .edit(ctx, EditChannel::new().name(new_title))
+            .await?;
+        //
+    }
+
+    Ok(())
+}
 
 pub async fn handle_message(
     ctx: &serenity::Context,
     _event: &FullEvent,
     framework: FrameworkContext<'_, Data, Error>,
-    _data: &Data,
+    data: &Data,
     message: &Message,
 ) -> Result<()> {
     if message.author.bot {
@@ -183,7 +305,7 @@ pub async fn handle_message(
 
     if let Some(b) = &start_message.interaction {
         if b.name == "chat" {
-            println!("Need handle chat message");
+            info!("Need handle chat message");
         } else {
             return Ok(());
         }
@@ -195,54 +317,9 @@ pub async fn handle_message(
     // println!("guild_channel: {:?}", thread_channel);
     // println!("Start message: {:?}", start_message);
 
-    let _typing = thread_channel.start_typing(&ctx.http);
-
-    let mut history = thread_channel.messages(ctx, GetMessages::default()).await?;
-
-    history.sort_by(|m1, m2| m1.timestamp.cmp(&m2.timestamp));
-
-    for m in &history {
-        let content = m.content.clone();
-        let author = m.author.name.clone();
-        println!("{} says: {}", author, content);
+    if let Err(e) = handle_chat_message(ctx, framework, data, &thread_channel).await {
+        warn!("Error handling chat message {}", e);
     }
-
-    let mut messages: Vec<ChatCompletionRequestMessage> = Vec::new();
-
-    for m in &history {
-        if m.author.id == framework.bot_id {
-            let msg = ChatCompletionRequestAssistantMessageArgs::default()
-                .content(m.content.clone())
-                .build()?;
-            messages.push(msg.into());
-        } else {
-            let msg = ChatCompletionRequestUserMessageArgs::default()
-                .content(m.content.clone())
-                .build()?;
-            messages.push(msg.into());
-        }
-    }
-
-    let request = CreateChatCompletionRequestArgs::default()
-        .model("gpt")
-        .messages(messages)
-        .build()?;
-
-    let response = _data.openai.chat().create(request).await?;
-    let mut resp_msg = String::new();
-
-    for choice in &response.choices {
-        let index = choice.index;
-        let role = choice.message.role;
-        let content = &choice.message.content;
-        println!("{}: Role: {} Content: {:?}", index, role, content);
-
-        if let Some(s) = content {
-            resp_msg.push_str(s.as_str());
-        }
-    }
-
-    thread_channel.say(ctx, resp_msg).await?;
 
     Ok(())
 }
@@ -293,4 +370,34 @@ pub async fn paper_scissors_stone(ctx: Context<'_>, shoot: Rps) -> Result<()> {
     }
     ctx.reply(message).await?;
     Ok(())
+}
+
+fn get_current_utc_datetime_tool() -> Result<ChatCompletionTool, OpenAIError> {
+    ChatCompletionToolArgs::default()
+        .r#type(ChatCompletionToolType::Function)
+        .function(get_current_utc_datetime_func()?)
+        .build()
+}
+
+fn get_current_utc_datetime_func() -> Result<FunctionObject, OpenAIError> {
+    FunctionObjectArgs::default()
+        .name("get_current_utc_datetime")
+        .description("Get current UTC date and time.")
+        .parameters(json!({
+            "type": "object",
+            "properties": {},
+            "required": [],
+        }))
+        .build()
+}
+
+fn get_current_utc_datetime() -> serde_json::Value {
+    let datetime = Utc::now();
+
+    let ret = json!({
+        "current_utc_date": datetime.date_naive(),
+        "current_utc_time": datetime.time(),
+    });
+
+    ret
 }
