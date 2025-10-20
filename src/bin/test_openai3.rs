@@ -1,7 +1,11 @@
 use async_openai::{
-    config::OpenAIConfig, types::{
-        ChatCompletionFunctionCall, ChatCompletionFunctionsArgs, ChatCompletionRequestFunctionMessageArgs, ChatCompletionRequestUserMessageArgs, CreateChatCompletionRequestArgs
-    }, Client
+    config::OpenAIConfig,
+    types::{
+        ChatCompletionFunctionCall, ChatCompletionFunctionsArgs,
+        ChatCompletionRequestFunctionMessageArgs, ChatCompletionRequestUserMessageArgs,
+        CreateChatCompletionRequestArgs,
+    },
+    Client,
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -47,7 +51,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 "required": ["location"],
             }))
             .build()?])
-        .function_call(ChatCompletionFunctionCall::Function { name: "get_current_weather".to_string() })
+        .function_call(ChatCompletionFunctionCall::Function {
+            name: "get_current_weather".to_string(),
+        })
         .build()?;
 
     let response_message = client
@@ -60,29 +66,35 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .message
         .clone();
 
-    if let Some(function_call) = response_message.function_call {
+    if let Some(tool_calls) = response_message.tool_calls {
         let mut available_functions: HashMap<&str, fn(&str, &str) -> serde_json::Value> =
             HashMap::new();
         available_functions.insert("get_current_weather", get_current_weather);
-        let function_name = function_call.name;
-        let function_args: serde_json::Value = function_call.arguments.parse().unwrap();
 
-        let location = function_args["location"].as_str().unwrap();
-        let unit = "fahrenheit";
-        let function = available_functions.get(function_name.as_str()).unwrap();
-        let function_response = function(location, unit);
+        let mut function_messages = Vec::new();
 
-        let message = vec![
-            ChatCompletionRequestUserMessageArgs::default()
-                .content("What's the weather like in Boston?")
-                .build()?
-                .into(),
-            ChatCompletionRequestFunctionMessageArgs::default()
+        for tool_call in tool_calls {
+            let function_call = tool_call.function.clone();
+            let function_name = function_call.name;
+            let function_args: serde_json::Value = function_call.arguments.parse().unwrap();
+
+            let location = function_args["location"].as_str().unwrap();
+            let unit = "fahrenheit";
+            let function = available_functions.get(function_name.as_str()).unwrap();
+            let function_response = function(location, unit);
+
+            let function_message = ChatCompletionRequestFunctionMessageArgs::default()
                 .content(function_response.to_string())
                 .name(function_name)
-                .build()?
-                .into(),
-        ];
+                .build()?;
+            function_messages.push(function_message);
+        }
+
+        let mut message = vec![ChatCompletionRequestUserMessageArgs::default()
+            .content("What's the weather like in Boston?")
+            .build()?
+            .into()];
+        message.extend(function_messages.into_iter().map(|fm| fm.into()));
 
         println!("{}", serde_json::to_string(&message).unwrap());
 

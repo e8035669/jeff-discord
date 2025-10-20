@@ -1,14 +1,12 @@
 use async_openai::{
     config::OpenAIConfig,
     types::{
-        ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestToolMessageArgs, ChatCompletionRequestUserMessageArgs, CreateChatCompletionRequestArgs
+        ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs, CreateChatCompletionRequestArgs
     },
     Client,
 };
 use minijinja::{context, Environment};
-use poise::serenity_prelude::json;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::collections::HashMap;
 use std::error::Error;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};

@@ -350,7 +350,7 @@ pub async fn paper_scissors_stone(ctx: Context<'_>, shoot: Rps) -> Result<()> {
     ctx.defer().await?;
 
     let mine = Rps::iter()
-        .choose(&mut rand::thread_rng())
+        .choose(&mut rand::rng())
         .ok_or(anyhow!("random error"))?;
 
     let i = (mine as i32 - shoot as i32 + 3) % 3;

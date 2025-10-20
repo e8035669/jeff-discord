@@ -1,15 +1,13 @@
 use anyhow::Result;
 use std::error::Error;
-use std::io::{stdout, Write};
 
 use async_openai::config::OpenAIConfig;
 use async_openai::error::OpenAIError;
 use async_openai::types::{
-    AssistantsApiToolChoiceOption, ChatCompletionMessageToolCall, ChatCompletionRequestAssistantMessage, ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage, ChatCompletionRequestToolMessageArgs, ChatCompletionRequestUserMessageArgs, ChatCompletionTool, ChatCompletionToolArgs, ChatCompletionToolType, FunctionObject, FunctionObjectArgs
+    ChatCompletionMessageToolCall, ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage, ChatCompletionRequestToolMessageArgs, ChatCompletionRequestUserMessageArgs, ChatCompletionTool, ChatCompletionToolArgs, ChatCompletionToolType, FunctionObject, FunctionObjectArgs
 };
 use async_openai::{types::CreateChatCompletionRequestArgs, Client};
 use chrono::Utc;
-use futures::StreamExt;
 use serde_json::json;
 
 #[tokio::main]
