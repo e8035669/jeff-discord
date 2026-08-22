@@ -1,7 +1,8 @@
+#![allow(deprecated)]
 use async_openai::{
     config::OpenAIConfig,
-    types::{
-        ChatCompletionFunctionCall, ChatCompletionFunctionsArgs,
+    types::chat::{
+        ChatCompletionFunctionCall, ChatCompletionFunctionsArgs, ChatCompletionMessageToolCalls,
         ChatCompletionRequestFunctionMessageArgs, ChatCompletionRequestUserMessageArgs,
         CreateChatCompletionRequestArgs,
     },
@@ -74,6 +75,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let mut function_messages = Vec::new();
 
         for tool_call in tool_calls {
+            let ChatCompletionMessageToolCalls::Function(tool_call) = tool_call else {
+                continue;
+            };
             let function_call = tool_call.function.clone();
             let function_name = function_call.name;
             let function_args: serde_json::Value = function_call.arguments.parse().unwrap();

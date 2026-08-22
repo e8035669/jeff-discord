@@ -2,7 +2,6 @@ use super::common::Context;
 use super::error::BotError;
 use anyhow::Result;
 use chrono::{Duration, Utc};
-use lazy_static::lazy_static;
 use poise::serenity_prelude::{
     parse_emoji, CreateActionRow, CreateButton, CreateEmbed, CreateEmbedFooter,
     CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditMessage, Emoji,
@@ -43,9 +42,8 @@ pub async fn emojistat(
 
         let msgs2: Vec<_> = msgs.iter().map(|m| m.content.to_owned()).collect();
 
-        lazy_static! {
-            static ref RE: Regex = Regex::new(r"(<a?)?:\w+:(\d{18}>)?").unwrap();
-        }
+        static RE: std::sync::LazyLock<Regex> =
+            std::sync::LazyLock::new(|| Regex::new(r"(<a?)?:\w+:(\d{18}>)?").unwrap());
 
         let emojis: Vec<EmojiId> = msgs2
             .iter()
@@ -183,9 +181,8 @@ async fn emojistat(_ctx: &Context, _msg: &Message) -> CommandResult {
 
             let msgs2: Vec<_> = msgs.iter().map(|m| m.content.to_owned()).collect();
 
-            lazy_static! {
-                static ref RE: Regex = Regex::new(r"(<a?)?:\w+:(\d{18}>)?").unwrap();
-            }
+            static RE: std::sync::LazyLock<Regex> =
+                std::sync::LazyLock::new(|| Regex::new(r"(<a?)?:\w+:(\d{18}>)?").unwrap());
 
             let emojis: Vec<EmojiId> = msgs2
                 .iter()

@@ -2,11 +2,10 @@ use super::admin::get_pref_model;
 use super::{common::Context, BotError, Data};
 use anyhow::{anyhow, Error, Result};
 use async_openai::error::OpenAIError;
-use async_openai::types::{
+use async_openai::types::chat::{
     ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage,
     ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs,
-    ChatCompletionTool, ChatCompletionToolArgs, ChatCompletionToolType,
-    CreateChatCompletionRequestArgs, FunctionObject, FunctionObjectArgs,
+    ChatCompletionTool, CreateChatCompletionRequestArgs, FunctionObject, FunctionObjectArgs,
 };
 use chrono::Utc;
 use poise::serenity_prelude::{
@@ -373,10 +372,9 @@ pub async fn paper_scissors_stone(ctx: Context<'_>, shoot: Rps) -> Result<()> {
 }
 
 fn get_current_utc_datetime_tool() -> Result<ChatCompletionTool, OpenAIError> {
-    ChatCompletionToolArgs::default()
-        .r#type(ChatCompletionToolType::Function)
-        .function(get_current_utc_datetime_func()?)
-        .build()
+    Ok(ChatCompletionTool {
+        function: get_current_utc_datetime_func()?,
+    })
 }
 
 fn get_current_utc_datetime_func() -> Result<FunctionObject, OpenAIError> {

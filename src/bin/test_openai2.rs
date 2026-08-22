@@ -3,10 +3,10 @@ use std::error::Error;
 
 use async_openai::config::OpenAIConfig;
 use async_openai::error::OpenAIError;
-use async_openai::types::{
-    ChatCompletionMessageToolCall, ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage, ChatCompletionRequestToolMessageArgs, ChatCompletionRequestUserMessageArgs, ChatCompletionTool, ChatCompletionToolArgs, ChatCompletionToolType, FunctionObject, FunctionObjectArgs
+use async_openai::types::chat::{
+    ChatCompletionMessageToolCalls, ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage, ChatCompletionRequestToolMessageArgs, ChatCompletionRequestUserMessageArgs, ChatCompletionTool, ChatCompletionToolChoiceOption, ChatCompletionTools, FunctionObject, FunctionObjectArgs, ToolChoiceOptions
 };
-use async_openai::{types::CreateChatCompletionRequestArgs, Client};
+use async_openai::{types::chat::CreateChatCompletionRequestArgs, Client};
 use chrono::Utc;
 use serde_json::json;
 
@@ -29,8 +29,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .model("gemma")
         // .max_tokens(512u32)
         .messages(current_history.clone())
-        .tools([get_current_utc_datetime_tool()?])
-        .tool_choice("auto")
+        .tools([ChatCompletionTools::Function(get_current_utc_datetime_tool()?)])
+        .tool_choice(ChatCompletionToolChoiceOption::Mode(ToolChoiceOptions::Auto))
         .build()?;
 
     println!("Asking question");
@@ -41,21 +41,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
         println!("Get response {:?}", ret_msg);
 
         if let Some(tool_calls) = ret_msg.tool_calls {
-            let mut ret_tool_calls: Vec<ChatCompletionMessageToolCall> = Vec::new();
+            let mut ret_tool_calls: Vec<ChatCompletionMessageToolCalls> = Vec::new();
             let mut ret_tool_message: Vec<ChatCompletionRequestMessage> = Vec::new();
 
-            for tool_call in tool_calls {
+            for tool_call_wrapper in tool_calls {
+                let ChatCompletionMessageToolCalls::Function(tool_call) = tool_call_wrapper else {
+                    continue;
+                };
                 let name = tool_call.function.name.clone();
                 let _args = tool_call.function.arguments.clone();
                 println!("Calling func {} {}", name, _args);
                 let ret = call_fn(&name, &_args);
                 if let Ok(ret) = ret {
-                    ret_tool_calls.push(tool_call.clone());
                     let tool_message = ChatCompletionRequestToolMessageArgs::default()
                         .content(ret.to_string())
-                        .tool_call_id(tool_call.id)
+                        .tool_call_id(tool_call.id.clone())
                         .build()?;
                     ret_tool_message.push(tool_message.into());
+                    ret_tool_calls.push(ChatCompletionMessageToolCalls::Function(tool_call));
                 }
             }
 
@@ -69,7 +72,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let request = CreateChatCompletionRequestArgs::default()
                 .model("gemma")
                 .messages(current_history.clone())
-                .tools([get_current_utc_datetime_tool()?])
+                .tools([ChatCompletionTools::Function(get_current_utc_datetime_tool()?)])
                 .build()?;
 
             println!("Send tool message");
@@ -92,10 +95,9 @@ fn call_fn(func_name: &str, _args: &str) -> Result<serde_json::Value> {
 }
 
 fn get_current_utc_datetime_tool() -> Result<ChatCompletionTool, OpenAIError> {
-    ChatCompletionToolArgs::default()
-        .r#type(ChatCompletionToolType::Function)
-        .function(get_current_utc_datetime_func()?)
-        .build()
+    Ok(ChatCompletionTool {
+        function: get_current_utc_datetime_func()?,
+    })
 }
 
 fn get_current_utc_datetime_func() -> Result<FunctionObject, OpenAIError> {

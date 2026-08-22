@@ -5,7 +5,9 @@ use crate::entities::prelude::*;
 use anyhow::Result;
 use chrono::prelude::*;
 use colorsys::{Hsl, HslRatio, Rgb};
-use poise::serenity_prelude::{CacheHttp, Colour, EditRole, Guild, MessageBuilder, RoleId};
+use poise::serenity_prelude::{
+    builder::CreateRoleColours, CacheHttp, Colour, EditRole, Guild, MessageBuilder, RoleId,
+};
 use sea_orm::ActiveModelTrait;
 use sea_orm::IntoActiveModel;
 use sea_orm::Set;
@@ -115,10 +117,9 @@ async fn update_all_colors<T>(_ctx: &T, color_data: &ColorRandom) -> Result<()>
 where
     T: CacheHttp,
 {
-    debug!("update all colors");
     let colors = color_data.get_all_colors().await?;
-
     let cache = _ctx.cache().ok_or(BotError::CacheFail)?;
+    debug!("update {} colors", colors.len());
     for c in colors.iter() {
         let guild_id = c.guild;
         let role_id = c.role;
@@ -134,7 +135,8 @@ where
             Some(role) => {
                 let mut role = role.clone();
                 if role.colour != color {
-                    let builder = EditRole::from_role(&role).colour(color.0 as u64);
+                    let builder = EditRole::from_role(&role)
+                        .colours(CreateRoleColours::new(color));
                     if let Err(why) = role.edit(_ctx.http(), builder).await {
                         warn!("Cannot edit role {:?}", why);
                     }
@@ -143,6 +145,7 @@ where
             None => warn!("Cannot get role:"),
         }
     }
+    debug!("update finished");
 
     Ok(())
 }
