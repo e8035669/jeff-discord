@@ -36,6 +36,20 @@ impl serenity::CacheHttp for MyCacheAndHttp {
     }
 }
 
+/// Build an `async_openai::Client` backed by a `reqwest::Client` that trusts
+/// Mozilla's bundled root certificates directly, instead of relying on
+/// `reqwest`'s default `rustls-platform-verifier` (which reads the OS's
+/// certificate store). This keeps the bot working in the `FROM scratch`
+/// Docker image, which has no OS certificate store on disk.
+fn build_openai_client(config: OpenAIConfig) -> Result<Client<OpenAIConfig>> {
+    let roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS
+        .iter()
+        .map(|der| reqwest::Certificate::from_der(der))
+        .collect::<reqwest::Result<Vec<_>>>()?;
+    let http_client = reqwest::Client::builder().tls_certs_only(roots).build()?;
+    Ok(Client::build(http_client, config))
+}
+
 #[poise::command(prefix_command, slash_command)]
 async fn help(
     ctx: Context<'_>,
@@ -195,11 +209,11 @@ async fn run_bot(config: HashMap<&str, &str>) {
                 info!("Get GlobalPref from database: {:?}", pref);
 
                 let color_data = Arc::new(ColorRandom::new(pool.clone()));
-                let openai_client = Client::with_config(
+                let openai_client = build_openai_client(
                     OpenAIConfig::new()
                         .with_api_base("http://192.168.17.20:8000/v1")
                         .with_api_key("EMPTY"),
-                );
+                )?;
 
                 let data = Data {
                     pool,
